@@ -6,7 +6,7 @@
 #     cmake -S src -B build
 #     cmake --build build
 #
-# and it produces build/picopop.uf2, which flash.sh will program.
+# and it produces build/picopop.uf2, which picodev.sh will program.
 #
 # The layout it assumes:
 #
@@ -42,7 +42,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # `make -C tools/tests music MUSIC_OPT=-Os`). On the board that is enough to miss
 # the mixer's block deadline, and when that happens the I2S DMA chain re-triggers
 # on the other buffer regardless of whether the CPU refilled it - see the long
-# comment in picosdl/flash.sh. The result is audible noise in the first tune.
+# comment in picosdl/picodev.sh. The result is audible noise in the first tune.
 #
 # Flash is not the scarce resource here: 45% of 4 MB used, and most of that is
 # converted sprites in .rodata, which -Os does not touch (-1,248 bytes of

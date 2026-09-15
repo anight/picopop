@@ -64,7 +64,7 @@ cmake --build build
 That produces `build/picopop.uf2`. To flash it:
 
 ```bash
-picosdl/flash.sh build/picopop.elf
+picosdl/picodev.sh flash build/picopop.elf
 ```
 
 If you already cloned without `--recurse-submodules`:

@@ -490,7 +490,7 @@ item on the list to get wrong quietly, because most of it will appear to work.
   exactly 125.0 at 8 kHz and it is the clock the ST7789 PIO timings were measured
   at. Keeping it means the divider analysis and the panel timings both carry over
   unchanged, which is worth more than the extra 22 MHz.
-- **`flash.sh` uses the SDK's OpenOCD and `target/rp2350.cfg`** — the distro's
+- **`picodev.sh` uses the SDK's OpenOCD and `target/rp2350.cfg`** — the distro's
   0.12.0 has no RP2350 target at all, which would otherwise be a confusing first
   failure.
 - **Flash and BSS have been re-measured** from the RP2350 build; see §7.
@@ -851,7 +851,7 @@ peak above, that turns 64% into roughly 94% before the digi mixer or the display
 gets a word in. On the board it missed the block deadline, and a missed deadline
 is not a dropout but *noise*: the I2S DMA chain re-triggers on the other buffer
 whether or not the CPU refilled it, so the previous block plays again — the
-mechanism set out at length in `picosdl/flash.sh`. Audible in the first tune,
+mechanism set out at length in `picosdl/picodev.sh`. Audible in the first tune,
 immediately, and confirmed gone on reverting to `-O3`.
 
 Two things worth keeping from that:
