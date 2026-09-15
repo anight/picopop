@@ -648,6 +648,9 @@ which reopens three things that had been ruled out: mods, a filesystem, and a
 second tile set. It also removes the only remaining argument for dropping
 TITLE.DAT (§11).
 
+Enough headroom that **`-Os` was tried and reverted**: it saves 127 KB of `.text`
+and breaks the audio. See §8.
+
 Worth noting because it was the one place the new core could have gone the wrong
 way: **it did not.** The M33 rebuild is 13,660 bytes *smaller* than the M0+ one
 (1,701,508 against 1,715,168), so Thumb-2 code density is a small win here rather
@@ -756,6 +759,37 @@ The peak was worth watching as the game got added: 64% left room for the digi
 mixer but not much else on core 1. On a faster core that headroom should widen
 considerably, and it is the single most useful number to retake first (§3.7),
 because it is what decides whether core 1 can absorb anything beyond audio.
+
+**That headroom is real, and it is what forbids `-Os`.** The build is `-O3`, and
+the note in `src/CMakeLists.txt` is there because it was briefly changed and had
+to be changed back. `-Os` is otherwise attractive: it costs nothing visible and
+takes 127 KB off `.text` — 34% of the code, and the flash image from 45.3% to
+42.2% of 4 MB. The frame rate does not notice, being panel-bound (§10).
+
+DBOPL at `-Os` is *bit-exact* — the title theme rendered both ways produces
+byte-identical WAVs — but it takes **1.47×** as long: 0.154 s → 0.227 s of host
+CPU per 30 s of audio (`make -C tools/tests music MUSIC_OPT=-Os`). Applied to the
+peak above, that turns 64% into roughly 94% before the digi mixer or the display
+gets a word in. On the board it missed the block deadline, and a missed deadline
+is not a dropout but *noise*: the I2S DMA chain re-triggers on the other buffer
+whether or not the CPU refilled it, so the previous block plays again — the
+mechanism set out at length in `picosdl/flash.sh`. Audible in the first tune,
+immediately, and confirmed gone on reverting to `-O3`.
+
+Two things worth keeping from that:
+
+- Flash is not the scarce resource and the ranking is not close. `-Os` leaves
+  `.rodata` alone (−1,248 bytes of 1,510,464) because the sprites are data, so
+  the whole saving comes out of code that is already ten times smaller than the
+  headroom (§7). Trading real-time margin for 3% of a flash chip is the wrong way
+  round.
+- If size ever does matter, the fix is per-file rather than global: `-O3` on
+  `dbopl.cpp`, `dbopl_adapter.cpp`, `midi.c` and picosdl's audio path, `-Os` on
+  everything else. Not done, because nothing needs the space.
+
+This is also the answer to "why is the mixer load reported at all". It is the
+only instrument in the tree pointed at the one deadline that cannot be missed
+quietly, and this is the first time it earned its keep.
 
 Part of the difference is structural: Nuked always runs its chip model at
 49716 Hz and resamples to the output rate, while DBOPL scales its internal

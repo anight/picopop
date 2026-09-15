@@ -48,19 +48,23 @@ MUSIC_CSRC = $(PSDL)/test/host_backend.c $(DEMO)/game_glue.c $(LIB) \
              $(POP)/midi.c $(RESOURCES)
 MUSIC_INC  = -I $(PSDL)/include -I $(PSDL)/src -I $(DEMO) -I $(REFDIR) \
              -I $(POP)
+# Overridable so the same tune can be rendered at a different optimisation level
+# and the results compared bit-for-bit; the firmware builds -Os (MinSizeRel).
+MUSIC_OPT ?= -O2
+
 define build_music
 	rm -rf $(1).objs && mkdir -p $(1).objs
 	for f in $(2) $(MUSIC_CSRC); do \
-	  $(CC) -std=c11 -O2 -g $(OPL_FLAGS) $(MUSIC_INC) -c $$f \
+	  $(CC) -std=c11 $(MUSIC_OPT) -g $(OPL_FLAGS) $(MUSIC_INC) -c $$f \
 	    -o $(1).objs/$$(basename $$f .c).o || exit 1; done
 	for f in $(OPL_SRC); do \
 	  case $$f in \
-	    *.cpp) $(CXX) -std=c++17 -O2 -g -fno-exceptions -fno-rtti $(OPL_FLAGS) \
+	    *.cpp) $(CXX) -std=c++17 $(MUSIC_OPT) -g -fno-exceptions -fno-rtti $(OPL_FLAGS) \
 	             $(MUSIC_INC) -c $$f -o $(1).objs/$$(basename $$f .cpp).o ;; \
-	    *.c)   $(CC) -std=c11 -O2 -g $(OPL_FLAGS) $(MUSIC_INC) -c $$f \
+	    *.c)   $(CC) -std=c11 $(MUSIC_OPT) -g $(OPL_FLAGS) $(MUSIC_INC) -c $$f \
 	             -o $(1).objs/$$(basename $$f .c).o ;; \
 	  esac || exit 1; done
-	$(OPL_LINK) -O2 -o $(1) $(1).objs/*.o -lm
+	$(OPL_LINK) $(MUSIC_OPT) -o $(1) $(1).objs/*.o -lm
 endef
 
 OPL ?= dbopl

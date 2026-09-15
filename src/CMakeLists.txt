@@ -26,25 +26,36 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 #
-# Optimise for size.
+# Build for speed, not for size. -O3.
 #
-# The Pico SDK defaults CMAKE_BUILD_TYPE to Release, which is -O3. Flash is
-# 4 MB and the converted sprites alone are most of a megabyte, so -Os is the
-# better trade here: the frame rate is panel-bound (PLAN.md section 10 - the
-# panel DMA holds the framebuffer for 16 ms of every 22), so the code is not
-# what the frame rate is waiting for.
+# This is the SDK's own default, but it is set explicitly here because it was
+# once changed and the change had to be reverted, and the next person to look at
+# a 1.8 MB image will have the same idea.
 #
-# This is a default, not a mandate: -DCMAKE_BUILD_TYPE=Release still gives -O3
-# for measuring against. It is set before pico_sdk_init() so the SDK's own
-# sources get it too, and picosdl inherits it as a subdirectory.
+# -Os is tempting: it costs nothing visible and saves 127 KB of .text (34% of the
+# code; 130 KB of the flash image, 45.3% -> 42.2% of 4 MB). The frame rate does
+# not care - it is panel-bound, see PLAN.md section 10.
 #
-# The one thing -Os could hurt is the mixer, which is the only hard real-time
-# code in the tree. PICOPOP_REPORT_AUDIO_LOAD is on below, so a regression there
-# shows up as a rising "mixer:" figure on the console rather than as a mystery.
+# The mixer does. DBOPL at -Os produces bit-identical output, verified by
+# rendering the title theme both ways and comparing the WAVs byte for byte, but
+# it takes 1.47x as long (0.154 s -> 0.227 s of host CPU per 30 s of audio,
+# `make -C tools/tests music MUSIC_OPT=-Os`). On the board that is enough to miss
+# the mixer's block deadline, and when that happens the I2S DMA chain re-triggers
+# on the other buffer regardless of whether the CPU refilled it - see the long
+# comment in picosdl/flash.sh. The result is audible noise in the first tune.
+#
+# Flash is not the scarce resource here: 45% of 4 MB used, and most of that is
+# converted sprites in .rodata, which -Os does not touch (-1,248 bytes of
+# 1,510,464). Trading real-time headroom for 3% of a flash chip is the wrong way
+# round.
+#
+# If size ever does matter, the shape of the fix is per-file: keep -O3 on
+# dbopl.cpp, dbopl_adapter.cpp, midi.c and picosdl's audio path, and let the rest
+# go to -Os. That was not done because nothing needs the space.
 #
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    set(CMAKE_BUILD_TYPE MinSizeRel CACHE STRING
-        "Build type (MinSizeRel = -Os; Release = -O3)" FORCE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING
+        "Build type (Release = -O3; see the note above before changing this)" FORCE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
         Debug Release MinSizeRel RelWithDebInfo)
 endif()
