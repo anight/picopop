@@ -388,10 +388,21 @@ leaves these:
 | `seg009.c:215, 256` directory listing | dead under this config — delete |
 | `options.c:594` `exe_memory` | caller already commented out — delete |
 
-**Size the arena from data, not from the worst case.** Peels are sprite-sized
-(*measured* max 53×35, 48×45, 42×39) so ~2 KB each, capped at 50 by `add_peel`,
-but the realistic concurrent count is far lower. Instrument the desktop build in
-3.1 for the high-water mark; the current 28 KB is a guess.
+**Size the arena from data, not from the worst case — and look at *what* is in
+it, not just how much.** Peels are sprite-sized (*measured* max 53×35, 48×45,
+42×39) so ~2 KB each, capped at 50 by `add_peel`, but the realistic concurrent
+count is far lower.
+
+Now *measured* on the desktop build, across levels 1, 2, 3 and 6: peak **2.0–3.1
+KB** of the 28, settling at 0.5–1.0 KB. Which means the 28 KB is roughly nine
+times what is needed and could fund most of a fourth screen buffer — but see §8
+before trusting that: these runs do not enter a dialog, the hall of fame, or
+`transition_ltr`, and the hall-of-fame path holds a peel across an `input_str()`
+that waits for the user.
+
+Those figures are what remained *after* removing a 16.5 KB start-up allocation
+that nothing read. Before that, the same runs peaked at 18.5–19.6 KB and looked
+like genuine demand.
 
 **Then enforce it**: link with
 `-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=free,--wrap=strdup` and
@@ -707,7 +718,11 @@ to abandon it when the measurements came back (§10).
 
 - ~~Palette unification~~ — the game already assigns rows; 741 sprites verified.
 - ~~Sprite RAM~~ — sprites are in flash; 0 bytes of RAM.
-- ~~Peel fragmentation~~ — LIFO arena, fragmentation structurally impossible.
+- ~~Peel fragmentation~~ — **partly reopened, see §8 Live.** Fragmentation in the
+  classic sense is still structurally impossible: the arena is a LIFO bump
+  allocator and there are no free holes to fragment. But "no fragmentation" was
+  read as "no way to run out early", and that does not follow — a long-lived
+  allocation near the bottom pins everything above it. That is what happened.
 - ~~Peripheral coexistence~~ — **confirmed on the old board**: the panel, the
   CYW43 radio and the I2S DAC run together, with the resource map and init
   ordering as designed and no DMA or PIO contention. RP2350 has *more* PIO and
@@ -726,6 +741,44 @@ to abandon it when the measurements came back (§10).
   entire project until 2026-08-29.
 
 ### Live
+
+**The LIFO arena can exhaust long before it is full.** *New — this one actually
+fired, on hardware:*
+
+```
+read_peel_from_screen: SDL_CreateRGBSurface: picosdl: arena exhausted
+(27956 used, 1560 wanted, 28672 total)
+```
+
+The cause was a single allocation: `init_copyprot_dialog()` grabbed a 220×75 peel
+at start-up and never freed it. 16,500 bytes at the bottom of a 28 KB LIFO arena,
+pinning 58% of it for the life of the process — and nothing ever read it. Every
+use of `copyprot_dialog` in the tree is `->peel_rect` or `->text_rect`; the
+dialogs set `need_full_redraw = 1` rather than restoring a peel, and the one call
+that would have read it is commented out upstream. Fixed by not allocating it:
+peak arena use went from 18.5–19.6 KB to 2.0–3.1 KB.
+
+Two things generalise, and they are why this stays under Live rather than moving
+to Retired:
+
+- **Lifetime, not size, is what a LIFO arena is sensitive to.** A small
+  allocation made early and held forever costs more than a large one made and
+  released. Nothing in the design prevents another; what makes them harmless is
+  that every arena user releases in stack order, which is a property of the
+  *callers* and is not enforced anywhere.
+- **`SDL_FreeSurface` already tolerates out-of-order frees**, marking the entry
+  dead and unwinding only as far as the top allows. That is the right behaviour,
+  but it means out-of-order use is silent. It is happening: `draw_main_midtable`
+  calls `add_peel()` between `hflip()`'s allocation and its free, so every
+  flipped sprite drawn with a peel pins its mirror until the peel goes.
+  *Measured* at 860–1560 bytes, harmless now that there is 25 KB spare, and
+  removable by hoisting the `add_peel()` call above the flip — the arguments do
+  not depend on the flip. Not done; noted.
+
+The instrument that found this is worth having permanently: `PSDL_ReportMemory()`
+prints totals and a depth, which read as healthy demand. Dumping the entry stack
+with each live surface's base, size and dimensions made it obvious immediately.
+Recorded as a `PSDL_DumpArena()` item in `picosdl/TODO.md`.
 
 **OPL3 CPU cost — resolved by switching emulator.**
 
