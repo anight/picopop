@@ -182,6 +182,11 @@ static const struct { const char *name; int scancode; } s_keynames[] = {
 	{ "escape", SDL_SCANCODE_ESCAPE }, { "up",     SDL_SCANCODE_UP     },
 	{ "down",   SDL_SCANCODE_DOWN   }, { "left",   SDL_SCANCODE_LEFT   },
 	{ "right",  SDL_SCANCODE_RIGHT  },
+	/* The volume keys never reach the game - psdl_push_key() consumes them - but
+	 * scripting them is how the ladder and the mute toggle get exercised. */
+	{ "volup",  SDL_SCANCODE_VOLUMEUP   },
+	{ "voldown",SDL_SCANCODE_VOLUMEDOWN },
+	{ "mute",   SDL_SCANCODE_MUTE       },
 };
 
 #define HOST_MAX_KEYS 16
@@ -212,14 +217,19 @@ void psdl_backend_input_init(void)
 	}
 }
 
+/*
+ * Deliver a scripted key the way the hardware backend does.
+ *
+ * This used to build an SDL_Event and SDL_PushEvent() it, which skipped
+ * psdl_push_key() - the entry point backend/pico/psdl_pico_input.c actually uses.
+ * Two things were wrong with that. SDL_GetKeyboardState() never saw a scripted
+ * key, because only psdl_push_key() maintains the keystate array; and anything
+ * psdl_push_key() filters, such as the volume keys, was not filtered here. A
+ * harness whose input path differs from the board's is worth less than it looks.
+ */
 static void push_key(int scancode, int down)
 {
-	SDL_Event e;
-	memset(&e, 0, sizeof(e));
-	e.type            = down ? SDL_KEYDOWN : SDL_KEYUP;
-	e.key.state       = down ? SDL_PRESSED : SDL_RELEASED;
-	e.key.keysym.scancode = (SDL_Scancode) scancode;
-	SDL_PushEvent(&e);
+	psdl_push_key((SDL_Scancode)scancode, down, KMOD_NONE);
 }
 
 void psdl_backend_input_poll(void)
@@ -359,4 +369,24 @@ void psdl_backend_delay_ms(Uint32 ms)
 	pump_audio();
 	struct timespec ts = { (long)(ms / 1000u), (long)(ms % 1000u) * 1000000L };
 	nanosleep(&ts, NULL);
+}
+
+/*
+ * Master volume. Declared in SDL.h and implemented by every backend, so the
+ * portable half can use it - psdl_audio_volume_key() does. Stored and returned
+ * rather than applied: this backend's "DAC" is a capture buffer, and scaling what
+ * the tests compare would make every one of them depend on the volume.
+ */
+static int s_master_volume = PSDL_DEFAULT_VOLUME;
+
+void PSDL_SetMasterVolume(int volume)
+{
+	if (volume < 0)              volume = 0;
+	if (volume > PSDL_VOLUME_UNITY) volume = PSDL_VOLUME_UNITY;
+	s_master_volume = volume;
+}
+
+int PSDL_GetMasterVolume(void)
+{
+	return s_master_volume;
 }
