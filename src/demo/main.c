@@ -18,8 +18,8 @@
  *   - a Bluetooth keyboard feeding SDL key events, with no scancode translation
  *   - an analog stick through SDL's joystick API
  *   - a four-voice synth in an SDL audio callback, mixed on core 1
- *   - the game's own title music: SDLPoP's unmodified midi.c driving DBOPL,
- *     reading the Adlib data straight out of flash
+ *   - an original three-voice tune sequenced in tune.c, so the demo needs no
+ *     game's data to make a sound
  *
  * The music is not decoration - it is how the mixer's real cost gets measured.
  * The demo reports mixer load as a percentage of each audio block's budget,
@@ -30,8 +30,7 @@
  *   stick        move the sprite (it faces the way it is going)
  *   stick button pluck a low note
  *   any key      pluck a note; the pitch follows the scancode
- *   1..4         play one of the game's Adlib tunes (1 is the title theme,
- *                which also starts by itself at boot)
+ *   1            restart the tune (it also starts by itself at boot)
  *   0            stop the music
  *   - / =        master volume down / up (starts at 25%)
  *   T            steady test tone, replacing everything else - if this is clean
@@ -50,15 +49,7 @@
 #include "psdl_pico.h"
 
 #include "font5x7.h"
-#include "game_glue.h"
-
-/* From SDLPoP's midi.c, used unmodified. */
-void midi_callback(void *userdata, Uint8 *stream, int len);
-void stop_midi(void);
-extern short midi_playing;
-
-/* Non-zero if midi.c ever had to truncate a block; see the note there. */
-extern unsigned midi_overlong_blocks;
+#include "tune.h"
 
 /*
  * A steady triangle wave, generated right where the mixed samples are handed
@@ -68,22 +59,6 @@ extern unsigned midi_overlong_blocks;
  */
 static volatile int s_test_tone_hz;
 
-/*
- * Heap watermark.
- *
- * parse_midi() is the only thing in this firmware that allocates, and how much
- * it wants is the question that decides whether the tunes have to be pre-parsed
- * at build time. sbrk(0) is the top of the heap, so the difference across a
- * parse is what that tune cost.
- */
-extern char *sbrk(int incr);
-
-static unsigned heap_used(void)
-{
-	extern char __StackLimit, end;   /* from the linker script */
-	(void)&__StackLimit;
-	return (unsigned)(sbrk(0) - &end);
-}
 
 /* ------------------------------------------------------- palette layout */
 
@@ -229,6 +204,14 @@ static SDL_Surface *sprite_create(void)
  */
 #define VOICES 4
 
+/*
+ * Upper bound on the frames in one audio block, for the mixing accumulator.
+ * SDL_OpenAudio is asked for 256 below and picosdl gives exactly that, but a
+ * backend is allowed to hand back more, so the callback clamps to this rather
+ * than trusting it.
+ */
+#define MIX_FRAMES_MAX 512
+
 typedef struct {
 	Uint32 phase;
 	Uint32 step;      /* phase increment per frame, 16.16 */
@@ -291,15 +274,20 @@ static void audio_callback(void *userdata, Uint8 *stream, int len)
 		return;
 	}
 
-	/* midi.c *adds* into the buffer and expects it zeroed first, which is also
-	 * what the game's own audio_callback does. Do the music first, then mix the
-	 * demo's plucked notes on top. */
-	memset(stream, 0, (size_t)len);
-	if (midi_playing)
-		midi_callback(NULL, stream, len);
+	/*
+	 * Sum the tune and the key-triggered notes in a mono accumulator, then clamp
+	 * once on the way out. Clamping per source would distort each one separately
+	 * and hide which is too loud.
+	 */
+	Sint32 acc[MIX_FRAMES_MAX];
+	if (frames > MIX_FRAMES_MAX)
+		frames = MIX_FRAMES_MAX;
+	memset(acc, 0, (size_t)frames * sizeof acc[0]);
+
+	tune_render(acc, frames);
 
 	for (int i = 0; i < frames; ++i) {
-		Sint32 mix = 0;
+		Sint32 mix = acc[i];
 		for (int v = 0; v < VOICES; ++v) {
 			if (s_voices[v].level <= 0)
 				continue;
@@ -312,8 +300,6 @@ static void audio_callback(void *userdata, Uint8 *stream, int len)
 				s_voices[v].level = 0;
 		}
 
-		/* Sum with whatever the music left here, then clamp once. */
-		mix += out[i * 2 + 0];
 		if (mix >  32767) mix =  32767;
 		if (mix < -32768) mix = -32768;
 
@@ -408,41 +394,19 @@ int main(void)
 		printf("audio: %d Hz, %u-frame blocks, %u us per block, volume %d%%\n",
 		       have.freq, (unsigned)have.samples, s_block_budget_us,
 		       PSDL_GetMasterVolume() * 100 / PSDL_VOLUME_UNITY);
-		/* midi.c reads its mixing rate from this. It has to be the spec we
-		 * actually got, or the music plays at the wrong speed. */
-		glue_set_audiospec(&have);
+		/* The tune needs the rate we actually got, not the one asked for, or
+		 * it plays at the wrong pitch and tempo. */
+		tune_init(have.freq);
 		SDL_PauseAudio(0);
 	}
 
-	/* The game's Adlib tunes, straight out of flash. */
-	static const struct { int id; const char *name; } tunes[] = {
-		{ GLUE_SOUND_MAIN_THEME,      "main theme"        },
-		{ GLUE_SOUND_STORY_1_ABSENCE, "story 1: absence"  },
-		{ GLUE_SOUND_STORY_3_JAFFAR,  "story 3: Jaffar"   },
-		{ GLUE_SOUND_ENDING_MUSIC,    "winning theme"     },
-	};
-	const char *now_playing = "(nothing)";
-
 	/*
-	 * Start the title theme straight away, the way the game's own start screen
-	 * does. It also means the audio path demonstrates itself on a bare board:
-	 * no keyboard has to pair first, which matters because Bluetooth is the one
-	 * part of this that can quietly fail to come up.
+	 * Start the music straight away, so the audio path demonstrates itself on a
+	 * bare board: no keyboard has to pair first, which matters because Bluetooth
+	 * is the one part of this that can quietly fail to come up.
 	 */
-	{
-		int size = 0;
-		const void *res = glue_find_resource("MIDISND2.DAT",
-		                                     GLUE_SOUND_MAIN_THEME, &size);
-		if (res == NULL) {
-			printf("music: title theme (resource %d) not found\n",
-			       GLUE_SOUND_MAIN_THEME);
-		} else {
-			glue_play_music(res);
-			now_playing = "main theme";
-			printf("music: playing the title theme at boot "
-			       "(resource %d, %d bytes)\n", GLUE_SOUND_MAIN_THEME, size);
-		}
-	}
+	tune_start();
+	printf("music: %s, %d voices\n", tune_name(), TUNE_VOICES);
 
 	/* State. */
 	int    sprite_x = (screen->w - SPRITE_W) / 2;
@@ -470,27 +434,14 @@ int main(void)
 				snprintf(last_key, sizeof(last_key), "%s (0x%02X)",
 				         SDL_GetScancodeName(sc), (unsigned)sc);
 
-				if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_4) {
-					int n = sc - SDL_SCANCODE_1;
-					int size = 0;
-					const void *res = glue_find_resource("MIDISND2.DAT",
-					                                     tunes[n].id, &size);
-					if (res == NULL) {
-						printf("music: resource %d not found\n", tunes[n].id);
-					} else {
-						unsigned before = heap_used();
-						glue_play_music(res);
-						printf("music: %s (resource %d, %d bytes) - "
-						       "parsed into %u bytes of heap, %u total\n",
-						       tunes[n].name, tunes[n].id, size,
-						       heap_used() - before, heap_used());
-						now_playing = tunes[n].name;
-					}
+				if (sc == SDL_SCANCODE_1) {
+					tune_start();
+					printf("music: %s\n", tune_name());
 					break;
 				}
 				if (sc == SDL_SCANCODE_0) {
-					stop_midi();
-					now_playing = "(nothing)";
+					tune_stop();
+					printf("music: stopped\n");
 					break;
 				}
 				if (sc == SDL_SCANCODE_MINUS || sc == SDL_SCANCODE_EQUALS) {
@@ -581,15 +532,14 @@ int main(void)
 		         (unsigned)fps, PSDL_DroppedEvents());
 		font5x7_draw(screen, 12, ty, PAL_GREEN, line); ty += 10;
 
-		snprintf(line, sizeof(line), "music: %s%s", now_playing,
+		snprintf(line, sizeof(line), "music: %s%s",
+		         tune_playing() ? tune_name() : "(stopped)",
 		         s_test_tone_hz ? "  [TEST TONE]" : "");
 		font5x7_draw(screen, 12, ty, PAL_YELLOW, line); ty += 10;
 
-		snprintf(line, sizeof(line), "volume: %d%%   truncated blocks: %u",
-		         PSDL_GetMasterVolume() * 100 / PSDL_VOLUME_UNITY,
-		         midi_overlong_blocks);
-		font5x7_draw(screen, 12, ty,
-		             midi_overlong_blocks ? PAL_RED : PAL_CYAN, line); ty += 10;
+		snprintf(line, sizeof(line), "volume: %d%%",
+		         PSDL_GetMasterVolume() * 100 / PSDL_VOLUME_UNITY);
+		font5x7_draw(screen, 12, ty, PAL_CYAN, line); ty += 10;
 
 		/* The number the OPL3 question turns on. Red once the mixer is using
 		 * more than three quarters of its budget. */
@@ -600,7 +550,7 @@ int main(void)
 		font5x7_draw(screen, 12, screen->h - 22, PAL_GREY,
 		             "stick moves - space xor - F fade");
 		font5x7_draw(screen, 12, screen->h - 12, PAL_GREY,
-		             "1-4 music  0 stop  -/= vol  T tone  M mem  Esc quit");
+		             "1 music  0 stop  -/= vol  T tone  M mem  Esc quit");
 
 		SDL_UpdateWindowSurface(window);
 
@@ -621,9 +571,9 @@ int main(void)
 			frames   = 0;
 			fps_mark = now;
 			mixer_load(&mix_avg, &mix_peak);
-			if (midi_playing)
-				printf("fps %u, mixer %u%% avg / %u%% peak, music '%s'\n",
-				       (unsigned)fps, mix_avg, mix_peak, now_playing);
+			printf("fps %u, mixer %u%% avg / %u%% peak, music '%s'\n",
+			       (unsigned)fps, mix_avg, mix_peak,
+			       tune_playing() ? tune_name() : "(stopped)");
 		}
 	}
 

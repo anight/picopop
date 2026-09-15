@@ -222,31 +222,37 @@ pico_add_extra_outputs(picopop)
 
 # ----------------------------------------------------------------- the demo
 #
-# The hardware bring-up demo. It lives here rather than in picosdl because it
-# cannot run without the game: it plays Prince of Persia's Adlib tunes through
-# SDLPoP's midi.c and blits its sprites. picosdl itself has no knowledge of any
-# game, which is the point of keeping it separate.
+# The hardware bring-up demo, and now genuinely self-contained: its font is
+# generated into flash by font5x7.c and its music is an original tune sequenced in
+# tune.c. It used to play Prince of Persia's Adlib tunes through SDLPoP's midi.c,
+# which made it useless as an example - the music was someone else's, and it lived
+# in the game's DAT files, so the demo could not be built without a copy of the
+# game, let alone shipped.
+#
+# So it links picosdl and nothing else. No SDLPoP, no generated resources, no OPL
+# emulator, and no DAT files needed to build it. That also makes it the answer to
+# picosdl's "no example program" TODO, and it could move into picosdl now that
+# nothing about it is specific to this game.
 #
 # It remains useful after bring-up as a bisection tool - a steady test tone, a
 # memory report, and a mixer load figure, with none of the game running.
 #
 add_executable(picosdl-demo
-    demo/main.c demo/font5x7.c demo/game_glue.c
-    ${SDLPOP_DIR}/midi.c ${PICOPOP_RESOURCES}/resources.c
+    demo/main.c demo/font5x7.c demo/tune.c
 )
-picopop_add_opl(picosdl-demo)
 
 target_link_libraries(picosdl-demo PRIVATE picosdl pico_float)
 target_include_directories(picosdl-demo PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/demo ${PICOSDL_DIR}/src ${SDLPOP_DIR}
-    ${PICOPOP_RESOURCES})
+    ${CMAKE_CURRENT_LIST_DIR}/demo ${PICOSDL_DIR}/src)
 
 set_source_files_properties(
-    demo/main.c demo/font5x7.c demo/game_glue.c
+    demo/main.c demo/font5x7.c demo/tune.c
     PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")
 
-# parse_midi() is the only thing in the demo that uses the heap.
-target_compile_definitions(picosdl-demo PRIVATE PICO_HEAP_SIZE=20480)
+# Nothing in the demo allocates any more: parse_midi() was the only thing that
+# did, and it has gone with the game's tunes. Kept small rather than zero because
+# newlib's stdio still wants a little for its buffers.
+target_compile_definitions(picosdl-demo PRIVATE PICO_HEAP_SIZE=4096)
 
 pico_enable_stdio_uart(picosdl-demo 1)
 pico_enable_stdio_usb(picosdl-demo 1)
