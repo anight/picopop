@@ -22,6 +22,7 @@
  *                       on the board that shows up as the console going quiet
  *                       and the picture freezing, with no way to ask why.
  */
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -389,4 +390,18 @@ void PSDL_SetMasterVolume(int volume)
 int PSDL_GetMasterVolume(void)
 {
 	return s_master_volume;
+}
+
+/*
+ * The backend logger. No ring needed here: this backend is single-threaded and
+ * nothing prints from a signal handler, so printf is already safe. On hardware it
+ * is not, which is why the interface exists - see backend/pico/psdl_pico_log.c.
+ */
+void psdl_backend_log(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	vprintf(fmt, ap);
+	va_end(ap);
+	fflush(stdout);
 }
