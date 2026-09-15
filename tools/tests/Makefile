@@ -20,7 +20,10 @@ CXX    ?= c++
 ROOT   := ../..
 PSDL   := $(ROOT)/picosdl
 POP    := $(ROOT)/SDLPoP/src
-DEMO   := $(ROOT)/src/demo
+# game_glue.c lives here rather than beside the demo it was written for. The demo
+# moved into picosdl and stopped needing it - its music is its own now - but these
+# tests still drive SDLPoP's midi.c on the host, and that is what the glue is for.
+GLUE   := $(dir $(lastword $(MAKEFILE_LIST)))
 DATA   ?= $(ROOT)/SDLPoP/data
 GEN    ?= $(ROOT)/generated
 REFDIR := $(GEN)/resources
@@ -44,9 +47,9 @@ REFERENCE := $(REFDIR)/reference.bin
 # C and C++ have to be compiled separately - resources.c uses C compound
 # literals, which are not addressable rvalues in C++ - then linked with the C++
 # driver when DBOPL is in play.
-MUSIC_CSRC = $(PSDL)/test/host_backend.c $(DEMO)/game_glue.c $(LIB) \
+MUSIC_CSRC = $(PSDL)/test/host_backend.c $(GLUE)/game_glue.c $(LIB) \
              $(POP)/midi.c $(RESOURCES)
-MUSIC_INC  = -I $(PSDL)/include -I $(PSDL)/src -I $(DEMO) -I $(REFDIR) \
+MUSIC_INC  = -I $(PSDL)/include -I $(PSDL)/src -I $(GLUE) -I $(REFDIR) \
              -I $(POP)
 # Overridable so the same tune can be rendered at a different optimisation level
 # and the results compared bit-for-bit; the firmware builds -Os (MinSizeRel).
@@ -118,14 +121,17 @@ OPL3_MIN_DB ?= 60
 opl3: $(RESOURCES)
 	@for skip in 0 1; do \
 	  $(CC) $(CFLAGS) -O2 -DOPL3_SKIP_SILENT_SLOTS=$$skip \
-	    -I $(DEMO) -I $(POP) \
+	    -I $(GLUE) -I $(POP) \
 	    -o $(OUT)-opl3-$$skip render_music.c $(PSDL)/test/host_backend.c \
-	    $(DEMO)/game_glue.c $(LIB) $(POP)/midi.c \
+	    $(GLUE)/game_glue.c $(LIB) $(POP)/midi.c \
 	    $(POP)/opl3.c $(RESOURCES) -lm || exit 1; \
 	  echo "--- OPL3_SKIP_SILENT_SLOTS=$$skip ---"; \
 	  $(OUT)-opl3-$$skip 10054 $(OUT)-opl3-$$skip.wav | grep -E "synthesis|RMS"; \
 	done
-	$(CC) $(CFLAGS) -o $(OUT)-wavdiff wav_diff.c -lm
+	# wav_diff.c is picosdl's, not ours - it compares two WAVs and knows nothing
+	# about any game. Named by path rather than expected in this directory, which
+	# is what broke this target when the tests moved out of picosdl/test.
+	$(CC) $(CFLAGS) -o $(OUT)-wavdiff $(PSDL)/test/wav_diff.c -lm
 	$(OUT)-wavdiff $(OUT)-opl3-0.wav $(OUT)-opl3-1.wav $(OPL3_MIN_DB)
 
 $(REFERENCE) $(RESOURCES):

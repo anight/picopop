@@ -130,6 +130,14 @@ project(picopop C CXX ASM)
 pico_sdk_init()
 
 # picosdl sees CMAKE_SOURCE_DIR != its own dir and skips its bootstrap.
+#
+# Its demo is off by default as a subdirectory, and asked for here because it is
+# the bring-up tool for this board: a palette animation, a sprite, a tone, a key
+# and a stick, with none of the game running. It used to be defined in this file
+# and play the game's own music; it lives in picosdl now, links nothing but the
+# library, and needs no DAT files - so it is the library's example rather than
+# ours. It still lands at build/picosdl-demo.elf.
+set(PICOSDL_BUILD_DEMO ON CACHE BOOL "Build picosdl-demo for board bring-up")
 add_subdirectory(${PICOSDL_DIR} picosdl)
 
 # ------------------------------------------------------------ OPL emulator
@@ -220,40 +228,3 @@ pico_enable_stdio_uart(picopop 1)
 pico_enable_stdio_usb(picopop 1)
 pico_add_extra_outputs(picopop)
 
-# ----------------------------------------------------------------- the demo
-#
-# The hardware bring-up demo, and now genuinely self-contained: its font is
-# generated into flash by font5x7.c and its music is an original tune sequenced in
-# tune.c. It used to play Prince of Persia's Adlib tunes through SDLPoP's midi.c,
-# which made it useless as an example - the music was someone else's, and it lived
-# in the game's DAT files, so the demo could not be built without a copy of the
-# game, let alone shipped.
-#
-# So it links picosdl and nothing else. No SDLPoP, no generated resources, no OPL
-# emulator, and no DAT files needed to build it. That also makes it the answer to
-# picosdl's "no example program" TODO, and it could move into picosdl now that
-# nothing about it is specific to this game.
-#
-# It remains useful after bring-up as a bisection tool - a steady test tone, a
-# memory report, and a mixer load figure, with none of the game running.
-#
-add_executable(picosdl-demo
-    demo/main.c demo/font5x7.c demo/tune.c
-)
-
-target_link_libraries(picosdl-demo PRIVATE picosdl pico_float)
-target_include_directories(picosdl-demo PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/demo ${PICOSDL_DIR}/src)
-
-set_source_files_properties(
-    demo/main.c demo/font5x7.c demo/tune.c
-    PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")
-
-# Nothing in the demo allocates any more: parse_midi() was the only thing that
-# did, and it has gone with the game's tunes. Kept small rather than zero because
-# newlib's stdio still wants a little for its buffers.
-target_compile_definitions(picosdl-demo PRIVATE PICO_HEAP_SIZE=4096)
-
-pico_enable_stdio_uart(picosdl-demo 1)
-pico_enable_stdio_usb(picosdl-demo 1)
-pico_add_extra_outputs(picosdl-demo)
