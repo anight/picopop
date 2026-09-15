@@ -199,7 +199,7 @@ Two invariants the implementation is built around:
 
 ### 2.3 Hardware integration
 
-One CMake project, one board (`pico2_w`), one clock (128 MHz), all three
+One CMake project, one board (`pico2_w`), one clock (138 MHz), all three
 peripherals alive together, compiling warning-free under `-Wall -Wextra` — and
 **run on hardware**, though on the previous board: the panel draws, the stick
 reads, a Bluetooth keyboard pairs and types, and the title theme plays from boot.
@@ -299,7 +299,7 @@ allocation in group (b) of section 9.
 **Do the dirty-rect panel push here too** — but *not* the single-buffer work.
 §10 settled that by experiment and came out against it: the 62.5 KB is not
 needed, `copy_screen_rect()` moves 2% of the screen rather than a full frame, and
-the panel DMA holds the framebuffer for 16 ms of every 22. What is worth doing
+the panel DMA holds the framebuffer for 15.8 ms of every 21. What is worth doing
 while these call sites are open is replacing the full-screen
 `SDL_UpdateWindowSurface` with a push of the rects the game already computes.
 That works with two surfaces and needs no change to `make_offscreen_buffer` or to
@@ -485,7 +485,7 @@ item on the list to get wrong quietly, because most of it will appear to work.
   ([`dispPioSt7789.c:193`](picosdl/vendor/pio-st7789/dispPioSt7789.c:193)),
   which clears it. This was the gotcha most likely to present as dead hardware,
   and it is closed.
-- **The clock stays at 128 MHz**, not the RP2350 default of 150
+- **The clock is 138 MHz**, below the RP2350 default of 150
   (`psdl_pico.h:30`). Deliberate: it makes the I2S divider
   exactly 125.0 at 8 kHz and it is the clock the ST7789 PIO timings were measured
   at. Keeping it means the divider analysis and the panel timings both carry over
@@ -698,7 +698,7 @@ tried and dropped:
 1. **One screen buffer instead of two: 62.5 KB. Abandoned.** §10 tried it and
    measured the result: the saving is unnecessary, the per-frame memcpy it was
    credited with deleting is 2% of a frame, and the panel DMA reads the
-   framebuffer for 16 ms of every 22. The real per-frame 62.5 KB memcpy turned
+   framebuffer for 15.8 ms of every 21. The real per-frame 62.5 KB memcpy turned
    out to be a self-blit in `update_screen()`, now removed — so the one benefit
    worth having was collected without giving up the buffer.
 2. **Pre-parse the MIDI at build time: 20 KB.** Happening regardless: §0 forbids
@@ -939,7 +939,8 @@ on 2026-08-29 and the static figures retaken, but nothing has been executed on
 the RP2350. The stale numbers are not wrong so much as unowned: they describe a
 Cortex-M0+ and are being read as if they described a Cortex-M33.
 
-The clock was deliberately held at 128 MHz across the change (§3.7), which
+The clock was deliberately held at 128 MHz across the change (§3.7) — it has since
+been raised to 138, still below the SDK default — which
 removes a great deal of this risk — the I2S divider and the ST7789 PIO timings
 both carry over exactly, and they were the two most timing-sensitive things
 here. What is left is the core, and the core only got faster.
@@ -1055,10 +1056,29 @@ are palette operations because on this design the palette is the CLUT (§5).
 
 Reason 1 is worth a number, because it is the one that decides this. The ST7789
 PIO program (`picosdl/vendor/pio-st7789/dispPioSt7789.c`) pushes SPI from SM1 as
-`OUT PINS,1` followed by `JMP Y--` with a one-cycle delay — 2 cycles per bit.
-Both state machines run at full speed, i.e. the 128 MHz system clock:
+`OUT PINS,1` followed by `JMP Y--`, both with zero delay, with the clock on
+sideset — SCK low on the `OUT`, high on the `JMP`. So **SCK is structurally
+sysclk/2**, with no divider involved: both state machines run at `clkdiv = 1`.
 
-> 16 bits/px × 2 cycles/bit × 64000 px ÷ 128 MHz = **16.0 ms per full-screen push**
+The per-pixel cost is not only that inner loop, which is where an earlier version
+of this section went wrong. The full loop is
+
+```
+lblPullNgo:  SET Y,15               1 cycle   (sideset enable=0, SCK holds)
+lblMoreBits: OUT + JMP Y--    ×16  32 cycles
+             JMP X--                1 cycle   (SCK holds low)
+                                   ----
+                                   34 cycles per 16-bit pixel
+```
+
+so bits occupy 32 of every 34 cycles — 94% — and the figure is
+
+> 64000 px × 34 cycles ÷ 138 MHz = **15.8 ms per full-screen push**
+
+This section previously said 16.0 ms, from 32 cycles per pixel at 128 MHz. Both
+halves of that have changed: the loop is 34 cycles, not 32, and the clock is now
+138 MHz (§3.7). The two corrections nearly cancel, which is why the conclusion did
+not move.
 
 Against the measured 43–45 fps (§8) — about 22 ms per frame — the DMA is reading
 the framebuffer for roughly three quarters of every frame. With one surface, all
@@ -1066,7 +1086,7 @@ compositing lands in that buffer while it is being scanned out.
 
 The previous version of this section argued the writes outside the dirty rects
 are idempotent, so a torn read there is invisible, and called that "the one real
-unknown in the scheme". It is still unknown, and 16 ms of every 22 is a poor
+unknown in the scheme". It is still unknown, and 15.8 ms of every 21 is a poor
 window in which to find out.
 
 ### The performance argument was wrong
@@ -1123,7 +1143,7 @@ before and after differ only in the torch-flame footprint above, i.e. not at all
   project needs.
 - The frame-rate saving it was credited with is 2% of a memcpy.
 - The real per-frame memcpy has been found and removed, at no risk.
-- Against that: the panel DMA holds the framebuffer for 16 ms of every 22, the
+- Against that: the panel DMA holds the framebuffer for 15.8 ms of every 21, the
   320×192 clip has to be reproduced some other way, and `transition_ltr` and the
   dialog save-under each need their own replacement.
 

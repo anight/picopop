@@ -119,8 +119,8 @@ add_custom_command(
 )
 
 # Pico 2 W (RP2350). Override with -DPICO_BOARD=pico_w for the original board.
-# The system clock stays at 128 MHz: that is what the ST7789 PIO timings were
-# measured at, and it keeps the I2S divider exact at 8 kHz.
+# The system clock is 138 MHz, set by picosdl - below the RP2350's 150 MHz
+# default, so the core is not overclocked. The panel is: SCK is sysclk/2.
 set(PICO_BOARD pico2_w CACHE STRING "Board type")
 
 # picosdl carries the SDK bootstrap so there is one copy of it, not two.
