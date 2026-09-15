@@ -1,0 +1,15 @@
+# CMake build trees
+build/
+*-build/
+
+# Desktop build
+tools/.objs/
+tools/picopop-host
+tools/frames/
+
+# Editor / tooling
+compile_commands.json
+.cache/
+generated/
+__pycache__/
+*.pyc

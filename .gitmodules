@@ -1,0 +1,12 @@
+[submodule "picosdl"]
+	path = picosdl
+	url = git@github.com:anight/picosdl.git
+	branch = master
+[submodule "SDLPoP"]
+	path = SDLPoP
+	url = git@github.com:anight/SDLPoP.git
+	branch = picopop
+[submodule "PR"]
+	path = PR
+	url = git@github.com:anight/PR.git
+	branch = add_plain_option
