@@ -164,10 +164,21 @@ target_compile_definitions(picopop PRIVATE PICOPOP_REPORT_AUDIO_LOAD=1)
 # Our own code only; SDLPoP's is not warning-clean under -Wextra.
 set_source_files_properties(main.c PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")
 
-# The game still uses malloc at the sites PLAN.md section 3.4 lists, and
-# parse_midi() is the largest of them. Sized to cover them until they are made
-# static; the console prints the peak so the number stays honest.
-target_compile_definitions(picopop PRIVATE PICO_HEAP_SIZE=65536)
+# Nothing in the game reaches the heap any more - every allocation site is a
+# static pool now, verified by disassembly. What is left are three SDK callers
+# that cannot be reached from here:
+#
+#   alarm_pool_create_on_timer_with_unused_hardware_alarm   one-shot at init
+#   alarm_pool_destroy
+#   cyw43_btbus_init                                        one-shot at init
+#
+# plus newlib's printf, which takes the heap for its stream buffers.
+#
+# 64 KB was sized for parse_midi(), which no longer needs it. 32 KB is a
+# conservative figure for what remains: the SDK's use has not been measured on
+# hardware, and starving cyw43_btbus_init would take Bluetooth out quietly.
+# Worth shrinking once the peak is known.
+target_compile_definitions(picopop PRIVATE PICO_HEAP_SIZE=32768)
 
 pico_enable_stdio_uart(picopop 1)
 pico_enable_stdio_usb(picopop 1)
