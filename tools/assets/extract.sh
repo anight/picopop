@@ -42,6 +42,32 @@ PR="${PR_TOOL:?PR_TOOL must point at the built pr executable}"
 RESXML="${PR_RESOURCE_XML:-$(dirname "$PR")/resources.xml}"
 [ -f "$RESXML" ] || { echo "extract.sh: no resources.xml at $RESXML" >&2; exit 1; }
 
+#
+# IBM_SND1.DAT and IBM_SND2.DAT are deliberately absent. Do not add them.
+#
+# They are the PC speaker sound set, and every resource in them is type 0,
+# sound_speaker. SDLPoP cannot play that type: USE_SPEAKER is not defined
+# anywhere - not here, not upstream - so the `#if USE_SPEAKER` case in
+# play_sound_from_buffer() is compiled out and a speaker sound falls through to
+# the default case, which is
+#
+#     printf("Tried to play unimplemented sound type %d.\n", ...); quit(1);
+#
+# So including them does not add sound, it adds an exit. Specifically:
+# IBM_SND1.DAT is the only DAT holding resources 10031, 10034, 10038 and 10042,
+# which is why sounds 31, 34, 38 and 42 report as unavailable at start-up. Of
+# those, 38 is sound_38_blink, asked for twelve times a second by the "Press
+# Button to Continue" blink - so the game would quit within a second of reaching
+# that screen.
+#
+# Leaving them out is what makes those four silent instead. That matches the
+# original: with a sound card rather than the speaker, PoP had no digitised or
+# MIDI form of them either.
+#
+# If speaker sounds are ever wanted, the work is in SDLPoP - define USE_SPEAKER
+# and implement play_speaker_sound() against picosdl's mixer - and adding them
+# here is the last step, not the first.
+#
 dat_files="DIGISND1.DAT DIGISND2.DAT DIGISND3.DAT FAT.DAT GUARD1.DAT GUARD2.DAT GUARD.DAT KID.DAT LEVELS.DAT MIDISND1.DAT MIDISND2.DAT PRINCE.DAT PV.DAT SHADOW.DAT SKEL.DAT TITLE.DAT VDUNGEON.DAT VIZIER.DAT VPALACE.DAT"
 
 DAT_DIR=$(cd "$DAT_DIR" && pwd)
