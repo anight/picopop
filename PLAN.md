@@ -296,17 +296,18 @@ unchanged and cost almost nothing.
 `load_sprites_from_file`. That is roughly 400 lines of `seg009.c` and every
 allocation in group (b) of section 9.
 
-**Do the single-buffer work here too.** §10 concludes the game can run on one
-screen surface, saving 62.5 KB, by replacing `copy_screen_rect()`'s
-offscreen→onscreen blit with a dirty-rect push to the panel. Every call site
-involved is already being opened by the work above; doing it afterwards means
-doing it twice. That means: `make_offscreen_buffer` becomes a stub returning the
-screen surface, `PSDL_SCREEN_BUFFERS` drops to 1, and each row of §10's
-table gets its own treatment.
+**Do the dirty-rect panel push here too** — but *not* the single-buffer work.
+§10 settled that by experiment and came out against it: the 62.5 KB is not
+needed, `copy_screen_rect()` moves 2% of the screen rather than a full frame, and
+the panel DMA holds the framebuffer for 16 ms of every 22. What is worth doing
+while these call sites are open is replacing the full-screen
+`SDL_UpdateWindowSurface` with a push of the rects the game already computes.
+That works with two surfaces and needs no change to `make_offscreen_buffer` or to
+`PSDL_SCREEN_BUFFERS`.
 
 **Done when** the game runs on the desktop against picosdl's host backend,
-drawing entirely in 8bpp from flash-resident sprites, on one screen surface, and
-looks identical to the current build.
+drawing entirely in 8bpp from flash-resident sprites, and looks identical to the
+current build.
 
 ### 3.2 The font
 
@@ -661,7 +662,7 @@ against **520 KB** it leaves about **301 KB**.
 
 | | |
 |---|---|
-| screen pool (2 × 320×200) | 128.0 KB — **halves**, §10 |
+| screen pool (2 × 320×200) | 128.0 KB — **stays**, §10 |
 | LIFO arena | 28.0 KB |
 | heap (`parse_midi` only) | 20.0 KB — **goes to zero**, §0 |
 | BTstack + CYW43 state | ~20 KB |
@@ -676,22 +677,24 @@ comfortable — **the RAM squeeze is over too**, and with it the argument that
 shaped much of sections 7 through 10.
 
 The three savings identified while it was not comfortable are worth keeping
-straight, because two of them are still going to happen and one is now a real
-choice rather than a forced move:
+straight, because two of them are still going to happen and one has since been
+tried and dropped:
 
-1. **One screen buffer instead of two: 62.5 KB.** No longer needed for fit.
-   **Still worth doing**, but now on its own merits rather than as a rescue —
-   §10 has the argument, and it is about a per-frame 62.5 KB memcpy and about
-   panel traffic, not about RAM.
+1. **One screen buffer instead of two: 62.5 KB. Abandoned.** §10 tried it and
+   measured the result: the saving is unnecessary, the per-frame memcpy it was
+   credited with deleting is 2% of a frame, and the panel DMA reads the
+   framebuffer for 16 ms of every 22. The real per-frame 62.5 KB memcpy turned
+   out to be a self-blit in `update_screen()`, now removed — so the one benefit
+   worth having was collected without giving up the buffer.
 2. **Pre-parse the MIDI at build time: 20 KB.** Happening regardless: §0 forbids
    the heap and this is the worst heap user in the tree (§3.3).
 3. **Precompute DBOPL's wave tables into flash: 8.8 KB.** Happening regardless:
    §0 forbids libm and this is the biggest libm user (§3.8).
 
 So 28.8 KB arrives as a side effect of the two hard constraints, and the
-remaining 62.5 KB is optional. **Nothing in the memory budget now depends on
-taking it**, which is a much better position to make that decision from than the
-one §10 was written in.
+remaining 62.5 KB stays spent. **Nothing in the memory budget depends on
+reclaiming it** — which is what made it cheap to test the idea properly and cheap
+to abandon it when the measurements came back (§10).
 
 ---
 
@@ -866,141 +869,157 @@ untouched.
 
 ## 10. Why the game needs two screen surfaces — and whether one will do
 
-This was written when 62.5 KB decided whether the project fit at all. It no
-longer does (§7), so **the conclusion below is now a recommendation rather than a
-requirement**. It is kept in full because the analysis is what tells you what the
-second surface is actually for, and that question does not go away when the RAM
-does — it still governs a per-frame 62.5 KB memcpy and how much data is pushed
-to the panel. Read the recommendation at the end with the board change in mind.
+**This has now been settled by experiment, and the answer reversed.** The
+previous version of this section recommended dropping to one surface "for the
+frame rate, not for the RAM". Both halves of that turned out to be wrong: the
+RAM is not needed, and the per-frame cost it was trading against is 2% of what
+it claimed. The section is rewritten around what was measured. The old
+conclusion is not preserved — it was arrived at by reading the code before the
+port existed, and three of its four supporting reasons have since been made
+obsolete by the port itself.
 
-The code has been read; what follows is what it actually does.
+**Conclusion: keep two surfaces.** The two things worth having out of the old
+plan — a dirty-rect panel push and the removal of a real per-frame 62.5 KB
+memcpy — are both available *without* touching the surface count, and one of
+them has already been done.
 
 ### What the two surfaces are
 
-`onscreen_surface_` is picosdl's window surface (`psdl_video.c`) — 320×200 8bpp,
-allocated from the screen pool, and **the buffer the panel DMA reads**.
-`offscreen_surface` is created by `make_offscreen_buffer()` (`seg009.c:892`) and
-is the game's compositing target. Its size depends on the mode:
+`onscreen_surface_` is picosdl's window surface (`psdl_video.c`) — 320×200 8bpp
+from the screen pool, and **the buffer the panel DMA reads**. `offscreen_surface`
+is created by `make_offscreen_buffer()` (`seg009.c`) and is the game's
+compositing target.
 
-- gameplay: `rect_top` = **320×192** (`seg003.c:32`), 61,440 bytes;
-- titles and cutscenes: `screen_rect` = **320×200** (`seg000.c:1945`,
-  `seg001.c:585`, `seg001.c:649`), 64,000 bytes.
+Both now come from the pool. `make_offscreen_buffer()` always requests exactly
+320×200 — only that size hits the pool, and a 60 KB buffer does not fit the
+28 KB arena — and then narrows the surface's `w`/`h`/`clip_rect` to the
+rectangle the game asked for. That narrowing is load-bearing; see below. The
+previous version of this section noted the 320×192 gameplay request falling
+through to the general allocator as "a small mismatch to fix"; it is fixed.
 
-They are never both alive: every site frees the old one before making the new.
-So the true peak is **two** surfaces, 128,000 bytes, and that is the 128.0 KB row
-in §7. Note that only an exact 320×200 request hits the pool
-(`psdl_surface.c:146`), so the 320×192 gameplay offscreen would today fall
-through to the general allocator — a small mismatch to fix whichever way this
-question is decided.
+`PSDL_SCREEN_BUFFERS` is 2 (`picosdl/src/psdl_internal.h`) and the run reports
+`screen buffers 2/2`. The overlay pair (`overlay_surface`, `merged_surface`)
+would need a third and fourth slot, which is why `init_overlay()` is lazy and
+fails gracefully.
 
-### The four things that genuinely need both
+### The experiment
 
-The naive reason — "it double-buffers the frame" — is **not** one of them.
-`draw_tables()` (`seg008.c:1364`) recomposites the whole of `rect_top` from
-scratch every frame (peels, wipes, backtable, midtable, foretable), so the
-offscreen holds no history that drawing straight to the screen would lose. What
-does need two images is this, and only this:
+`make_offscreen_buffer()` was made to return `onscreen_surface_` behind an
+environment flag, and 30 frames captured each way from a scripted run into
+level 2 (`PICOPOP_KEYS=lshift@40,return@900,right@1600,right@2200,up@2800`).
 
-1. **The panel DMA runs concurrently with drawing.** `psdl_backend_video_present`
-   kicks `dispDrawBuffer` and returns; the wait for the previous transfer happens
-   at the *start* of the next present
-   (`backend/pico/psdl_pico_video.c:98–108`). That overlap is what buys the
-   *measured* 43–45 fps (§8). Compositing directly into the buffer the DMA is
-   reading would tear the whole frame, every frame — the panel would show
-   background with no prince in it. **This is the real reason, and it is a
-   picosdl-side property, not a SDLPoP one.**
+28 of 30 frames differed — but only inside two 16×18 boxes, and only between
+palette indices 48/49/50. Those are the torch flames. A control run of the
+*two-surface* build against itself produced the same footprint:
 
-2. **`transition_ltr()`** (`seg000.c:2042`) reveals the new room over the old one
-   in 2-pixel columns, 160 steps, idling between each. It holds the complete old
-   image and the complete new image simultaneously, by construction.
+| pair | differing px | x | y | index pairs |
+|---|---|---|---|---|
+| two vs two (control) | 2035 | 75–179 | 68–84 | 48↔50, 49↔50 |
+| two vs one | 2081 | 75–179 | 68–84 | 48↔50, 49↔50 |
+| control vs one | 1870 | 75–179 | 68–84 | 48↔50, 49↔50 |
 
-3. **`set_bg_attr()`'s flash** (`seg009.c:3800–3820`) fills the *onscreen*
-   surface with a single flash colour and then blits the offscreen over it with
-   black colour-keyed out. With one buffer the fill destroys the image it is
-   about to composite against.
+The flames are nondeterministic between *any* two runs, so one surface is
+indistinguishable from two in this harness. That is a much weaker result than it
+looks: the host backend snapshots at present time, which is exactly when a
+single buffer is *consistent*. It cannot see tearing, and tearing is the whole
+question. The run also never entered `transition_ltr`, a dialog, or
+`upside_down`.
 
-4. **Dialog save-under.** `showmessage_any_key()` (`seg000.c:1820`) and
-   `save_recorded_replay_dialog()` (`replay.c:780`) blit *onscreen → offscreen*
-   over `copyprot_dialog->peel_rect`, using the offscreen as scratch storage for
-   the pixels the dialog is about to cover.
+### The reasons, re-checked against the code that now exists
 
-Two more uses look like reasons and are not:
-
-- **`upside_down`.** `flip_screen(offscreen_surface)` (`seg000.c:939/946`,
-  `seg003.c:297/301`, `seg009.c:3812/3823`) reverses the offscreen's rows *in
-  place*, copies out, then reverses it back. It needs a scratch row, not a
-  scratch frame — and picosdl already has `PSDL_BlitMirrored`, so the mirror can
-  move into the copy or into the panel scan-out and the double flip disappears.
-- **Fades.** `fade_in_2`/`make_pal_buffer_fadein` operate on the palette, and on
-  this design the palette *is* the CLUT (§5), so they need no second image at
-  all.
-
-### Can one buffer work?
-
-Yes, and the route runs through picosdl rather than through SDLPoP. The
-observation that makes it work: **`dispDrawBuffer` already takes a `Rect`**, and
-SDLPoP already computes exactly the right rectangles.
-
-The gameplay loop is `draw_tables()` into the offscreen, then
-`copy_screen_rect()` for each accumulated dirty rect (`seg000.c:940–948`,
-`seg001.c:126–128`). Replace that copy with a *panel push of the same rect*:
-`draw_tables()` composites straight into the framebuffer, and each drect is then
-DMA'd to the panel. The second buffer is gone, and so is a 62.5 KB memcpy per
-frame — and the panel traffic drops from a full 320×200 to the dirty area, which
-should *raise* the frame rate rather than lower it. The dirty-rect machinery
-already exists and is already correct; nothing in the game changes.
-
-Writes outside the drects are still a concern in principle, since `draw_tables()`
-touches the whole room. In practice those writes are idempotent — same tables,
-same tiles, same values — so a torn read there is invisible. Anything that
-genuinely changed is by definition inside a drect, and that is what gets pushed.
-This needs confirming on the board rather than assuming; it is the one real
-unknown in the scheme.
-
-The four cases above, plus the title and cutscene path, then need handling
-individually:
-
-| case | with one buffer |
+| reason | status |
 |---|---|
-| async panel DMA | dirty-rect push, as above; sequence the composite after the previous rect's transfer completes |
-| `transition_ltr` | it is a left-to-right column wipe of a freshly drawn room. Draw the new room into the framebuffer once, then push columns to the panel progressively — the panel's own memory becomes the second image, which is what it was always standing in for |
-| `set_bg_attr` flash | it flashes the whole screen one colour and restores. On a CLUT design this is a **palette** operation, not a pixel one: point every entry at the flash colour, push nothing, restore. Cheaper than today |
-| dialog save-under | `peel_rect` is dialog-sized, not screen-sized. This is exactly what the LIFO arena (§3.4) is for |
-| title / cutscene builds | these fade in from black via the palette and are drawn once, so they can composite in place |
+| **1. The panel DMA runs concurrently with drawing.** `psdl_backend_video_present` kicks `dispDrawBuffer` and returns; the wait for the previous transfer happens at the *start* of the next present. | **Holds — and is the only reason that matters.** |
+| **2. `transition_ltr()`** (`seg000.c`) reveals the new room over the old in 2-pixel columns, 160 steps, idling between each. It holds both complete images by construction. | **Holds.** |
+| **3. `set_bg_attr()`'s flash** filled the onscreen surface with the flash colour and blitted the offscreen over it colour-keyed, so one buffer would destroy the image it composites against. | **Dead.** It is now a single CLUT write (`seg009.c`); the blit that follows is offscreen→onscreen, which one surface makes a harmless self-blit. The flash still works. |
+| **4. Dialog save-under** — `showmessage()`, `showmessage_any_key()`, `save_recorded_replay_dialog()` blit onscreen→offscreen over `copyprot_dialog->peel_rect`. | **Holds, weakly.** Three sites, all followed by `need_full_redraw = 1`, and `peel_rect` is dialog-sized, not screen-sized — which is what the LIFO arena is for. |
+| **5. The 320×192 clip.** `make_offscreen_buffer()` narrows `w`/`h` so that nothing clamps a sprite to the play area on the way in and `add_drect()` cannot record a dirty rect past row 192. | **New, and not in the previous version of this section** — it postdates it. Returning the window surface hands back all 200 rows and reintroduces the bug where sprites spill over the status line and the life triangles. The experiment above had this flaw; the run simply never triggered it. |
+
+`upside_down` and the fades remain non-reasons, for the reasons given before:
+`flip_screen()` reverses rows in place and needs a scratch *row*, and the fades
+are palette operations because on this design the palette is the CLUT (§5).
+
+### How long the DMA actually holds the framebuffer
+
+Reason 1 is worth a number, because it is the one that decides this. The ST7789
+PIO program (`picosdl/vendor/pio-st7789/dispPioSt7789.c`) pushes SPI from SM1 as
+`OUT PINS,1` followed by `JMP Y--` with a one-cycle delay — 2 cycles per bit.
+Both state machines run at full speed, i.e. the 128 MHz system clock:
+
+> 16 bits/px × 2 cycles/bit × 64000 px ÷ 128 MHz = **16.0 ms per full-screen push**
+
+Against the measured 43–45 fps (§8) — about 22 ms per frame — the DMA is reading
+the framebuffer for roughly three quarters of every frame. With one surface, all
+compositing lands in that buffer while it is being scanned out.
+
+The previous version of this section argued the writes outside the dirty rects
+are idempotent, so a torn read there is invisible, and called that "the one real
+unknown in the scheme". It is still unknown, and 16 ms of every 22 is a poor
+window in which to find out.
+
+### The performance argument was wrong
+
+The old recommendation rested on `copy_screen_rect()` being "a 62.5 KB memcpy
+every frame". It is not: it has always been per-dirty-rect. Instrumented over a
+6000-present run:
+
+```
+copy_screen_rect 29858 calls, 7593458 px, 1265.6 px/present (2.0% of 64000)
+```
+
+About five rectangles and 1.2 KB per frame. Deleting it saves 2% of one memcpy,
+not a whole one.
+
+What *is* real is the other claim, and it survives intact: `SDL_UpdateWindowSurface`
+pushes the full 320×200 to the panel on every present, the frame rate is measured
+panel-bound, and pushing only the dirty area would attack the actual limit. But
+**that is a separate change.** It needs `dispDrawBuffer`'s `Rect` — which it
+already takes — and the drects the game already computes. It does not need the
+second surface to go away. The old section bundled two independent changes and
+credited the RAM saving with the frame-rate win.
+
+### The 62.5 KB memcpy was real, in a different function
+
+While checking the above, `update_screen()` turned out to do
+`SDL_BlitSurface(surface, NULL, window_surface_, NULL)`. But `get_final_surface()`
+returns `onscreen_surface_` whenever no overlay is up, and both it and
+`window_surface_` come from `SDL_GetWindowSurface()`, which in picosdl returns
+the single window surface. Verified at runtime:
+
+```
+onscreen_surface_=0x6517477ae520 window_surface_=0x6517477ae520 SAME
+```
+
+So this was a **64000-byte blit of the framebuffer onto itself, once per
+present** — the per-frame 62.5 KB memcpy this section was looking for, in a
+function it never examined. Upstream cannot hit it: there the window surface is
+the OS's and `onscreen_surface_` is a separate buffer, so the blit always moves
+pixels.
+
+**Fixed**, by guarding the blit with `surface != window_surface_` and lifting
+`SDL_UpdateWindowSurface()` out of it so the frame is still presented. The guard
+is exact rather than a heuristic — it is false precisely when
+`get_final_surface()` returns `merged_surface`. With `USE_MENU` and
+`USE_DEBUG_CHEATS` both off it is always true, so the blit never runs. Frames
+before and after differ only in the torch-flame footprint above, i.e. not at all.
 
 ### Recommendation
 
-**Still do it, still as part of 3.1 — but for the frame rate, not for the RAM.**
+**Keep two surfaces. Do not do the single-buffer work.**
 
-The RAM justification is gone: 62.5 KB against 301 KB free is not worth a day's
-work, let alone a risk. What survives the board change is the other half of the
-argument, and it was always the more interesting half:
+- The RAM saving is 62.5 KB against ~301 KB free (§7). It buys nothing the
+  project needs.
+- The frame-rate saving it was credited with is 2% of a memcpy.
+- The real per-frame memcpy has been found and removed, at no risk.
+- Against that: the panel DMA holds the framebuffer for 16 ms of every 22, the
+  320×192 clip has to be reproduced some other way, and `transition_ltr` and the
+  dialog save-under each need their own replacement.
 
-- `copy_screen_rect()` is a **62.5 KB memcpy every frame** that the dirty-rect
-  push deletes outright.
-- The panel push drops from a full 320×200 to the dirty area. The frame rate is
-  *measured* panel-bound (§8), so this is the one change in the plan that
-  attacks the actual limit rather than a budget.
-
-Neither of those got cheaper when the board got bigger. If anything the case
-strengthened: on a faster core the panel link is an even larger share of the
-frame.
-
-The timing argument also survives unchanged. Every call site involved is being
-opened by 3.1 anyway, and retrofitting the dirty-rect push after the blitters are
-rewired means doing the same work twice. The order is: give the host backend a
-real SDL2 window (§6), rewire the blitters (3.1), and while the call sites are
-open replace `copy_screen_rect()` with a panel push, drop `make_offscreen_buffer`
-to a stub returning the screen surface, and set `PSDL_SCREEN_BUFFERS` to 1.
-
-What *has* changed is the fallback position, and for the better. The risk to
-watch is the tearing assumption — that writes outside the drects are idempotent.
-If it fails on hardware there are now two retreats instead of one: the
-**one-band scratch buffer** (composite a strip, push it, repeat) at a few KB, or
-simply **keeping the second surface**, which no longer costs anything the project
-needs. Previously that second option did not exist. So this is now a change that
-can be attempted cheaply and abandoned cheaply, which is the best reason of all
-to try it.
+**Do instead, separately: the dirty-rect panel push.** That is where the frame
+rate is, it works with two surfaces, and it is independent of everything above.
+Reason 1 above becomes the constraint on *it* rather than an obstacle: the
+composite for frame N+1 must not start until frame N's rects have gone out,
+which the existing sync already enforces.
 
 ---
 

@@ -25,6 +25,31 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+#
+# Optimise for size.
+#
+# The Pico SDK defaults CMAKE_BUILD_TYPE to Release, which is -O3. Flash is
+# 4 MB and the converted sprites alone are most of a megabyte, so -Os is the
+# better trade here: the frame rate is panel-bound (PLAN.md section 10 - the
+# panel DMA holds the framebuffer for 16 ms of every 22), so the code is not
+# what the frame rate is waiting for.
+#
+# This is a default, not a mandate: -DCMAKE_BUILD_TYPE=Release still gives -O3
+# for measuring against. It is set before pico_sdk_init() so the SDK's own
+# sources get it too, and picosdl inherits it as a subdirectory.
+#
+# The one thing -Os could hurt is the mixer, which is the only hard real-time
+# code in the tree. PICOPOP_REPORT_AUDIO_LOAD is on below, so a regression there
+# shows up as a rising "mixer:" figure on the console rather than as a mystery.
+#
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE MinSizeRel CACHE STRING
+        "Build type (MinSizeRel = -Os; Release = -O3)" FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+        Debug Release MinSizeRel RelWithDebInfo)
+endif()
+message(STATUS "picopop: build type ${CMAKE_BUILD_TYPE}")
+
 set(PICOPOP_ROOT ${CMAKE_CURRENT_LIST_DIR}/..)
 set(PICOSDL_DIR  ${PICOPOP_ROOT}/picosdl)
 set(SDLPOP_DIR   ${PICOPOP_ROOT}/SDLPoP/src)
