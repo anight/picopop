@@ -393,8 +393,9 @@ it, not just how much.** Peels are sprite-sized (*measured* max 53×35, 48×45,
 42×39) so ~2 KB each, capped at 50 by `add_peel`, but the realistic concurrent
 count is far lower.
 
-Now *measured* on the desktop build, across levels 1, 2, 3 and 6: peak **2.0–3.1
-KB** of the 28, settling at 0.5–1.0 KB. Which means the 28 KB is roughly nine
+Now *measured* on the desktop build: peak **2.0–3.1 KB** of the 28 across levels
+1, 2, 3 and 6, and **6.7 KB** over a 400,000-present run through the title and
+attract-demo loop, which is the higher figure and the one to size from. Which means the 28 KB is roughly nine
 times what is needed and could fund most of a fourth screen buffer — but see §8
 before trusting that: these runs do not enter a dialog, the hall of fame, or
 `transition_ltr`, and the hall-of-fame path holds a peel across an `input_str()`
@@ -775,10 +776,34 @@ to Retired:
   removable by hoisting the `add_peel()` call above the flip — the arguments do
   not depend on the flip. Not done; noted.
 
-The instrument that found this is worth having permanently: `PSDL_ReportMemory()`
-prints totals and a depth, which read as healthy demand. Dumping the entry stack
-with each live surface's base, size and dimensions made it obvious immediately.
-Recorded as a `PSDL_DumpArena()` item in `picosdl/TODO.md`.
+**And it fired again, for a different reason — a real leak.** Letting the attract
+demo restart repeatedly exhausted it a second time. `clear_screen_and_sounds()`
+(`seg000.c`) was upstream's
+
+```c
+peels_count = 0;
+// should these be freed?
+```
+
+They should. Dropping the count abandons every peel in `peels_table`: neither the
+surface nor its peel-pool slot comes back. On a desktop those were `malloc`'d and
+a few KB per screen change went unnoticed; here it runs on every transition,
+including each demo restart. Fixed by calling `free_peels()`, which discards them
+- what the assignment meant - and frees in reverse order, which is the order the
+arena wants. *Measured* over 400,000 presents and many demo loops afterwards:
+`arena 0/28672 bytes, depth 0` at exit, peak 6,700. That peak is higher than
+§3.4's 2.0-3.1 KB because this run covers the title and demo path those did not.
+
+So the arena has now been exhausted twice, by two unrelated causes, and neither
+was a sizing problem. **`PSDL_ARENA_BYTES` was never too small.** Raising it
+would have postponed both and diagnosed neither, which is the trap a fixed-budget
+allocator sets: the symptom names the victim, never the culprit.
+
+The instrument is what closed both, and it is now permanent.
+`PSDL_ReportMemory()` prints totals and a depth, which read as healthy demand in
+both cases. `PSDL_DumpArena()` prints every entry - base, size, dimensions, live
+or dead - and `SDL_CreateRGBSurface` calls it itself on exhaustion, so the next
+occurrence names its own cause instead of needing this done again.
 
 **OPL3 CPU cost — resolved by switching emulator.**
 
