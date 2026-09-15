@@ -64,9 +64,21 @@ RESXML="${PR_RESOURCE_XML:-$(dirname "$PR")/resources.xml}"
 # original: with a sound card rather than the speaker, PoP had no digitised or
 # MIDI form of them either.
 #
-# If speaker sounds are ever wanted, the work is in SDLPoP - define USE_SPEAKER
-# and implement play_speaker_sound() against picosdl's mixer - and adding them
-# here is the last step, not the first.
+# If speaker sounds are ever wanted, they are closer than this comment used to
+# claim: SDLPoP's speaker implementation is complete and merely switched off -
+# speaker_callback() is written, audio_callback() dispatches to it, and the tree
+# compiles and links with -DUSE_SPEAKER=1 as it stands. So the recipe is just
+# `#define USE_SPEAKER 1` in SDLPoP/src/config.h *and* these two names added
+# below, in that order. Nothing here needs changing otherwise: convert.py carries
+# any non-image resource through as raw bytes.
+#
+# Adding them will not turn every sound into a beep. load_sounds() opens
+# IBM_SND1.DAT before the digi and MIDI sets and open_dat() prepends to the chain,
+# so the digitised and MIDI forms still win wherever they exist and the speaker
+# set only fills the four gaps above.
+#
+# The define first, though. Without it the speaker cases are compiled out and
+# these resources become exits rather than sounds.
 #
 dat_files="DIGISND1.DAT DIGISND2.DAT DIGISND3.DAT FAT.DAT GUARD1.DAT GUARD2.DAT GUARD.DAT KID.DAT LEVELS.DAT MIDISND1.DAT MIDISND2.DAT PRINCE.DAT PV.DAT SHADOW.DAT SKEL.DAT TITLE.DAT VDUNGEON.DAT VIZIER.DAT VPALACE.DAT"
 

@@ -30,7 +30,7 @@ CXX     ?= c++
 
 # -DPICOPOP=1 marks the port's own conditionals in the game sources.
 # _GNU_SOURCE is what SDLPoP's own Makefile passes.
-DEFS    := -D_GNU_SOURCE=1 -DPICOPOP=1 -DPICOPOP_USE_DBOPL=1
+DEFS    := -D_GNU_SOURCE=1 -DPICOPOP=1 -DPICOPOP_USE_DBOPL=1 $(DEFS_EXTRA)
 
 INC     := -I $(PSDL)/include -I $(PSDL)/src -I $(POP) -I $(RES) -I .
 WARN    := -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare \
