@@ -48,7 +48,11 @@ int main(void)
 	 * only we know that: picosdl takes indices precisely because the meaning of a
 	 * palette belongs to the game.
 	 */
-	PSDL_StatusBands(SDL_TRUE, 15, 0);
+	/* White on black, as RGB: the bands are picosdl's, and must not follow the
+	 * game's palette - the damage flash rewrites entry 0. */
+	static const SDL_Color band_fg = { 255, 255, 255, SDL_ALPHA_OPAQUE };
+	static const SDL_Color band_bg = {   0,   0,   0, SDL_ALPHA_OPAQUE };
+	PSDL_StatusBands(SDL_TRUE, band_fg, band_bg);
 	PSDL_SetFooterText("github.com/anight/picopop");
 
 	g_argc = 1;
