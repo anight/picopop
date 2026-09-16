@@ -39,6 +39,18 @@ int main(void)
 	printf("\n=== picopop: Prince of Persia ===\n");
 	printf("sys clock %u Hz\n", (unsigned)clock_get_hz(clk_sys));
 
+	/*
+	 * Use the letterbox strips the 320x240 panel leaves above and below a 320x200
+	 * canvas. picosdl fills the header with its own figures - frame rate and the
+	 * load on both cores - and the footer with whatever we give it.
+	 *
+	 * Indices 15 and 0 are bright white on black in Prince of Persia's palette, and
+	 * only we know that: picosdl takes indices precisely because the meaning of a
+	 * palette belongs to the game.
+	 */
+	PSDL_StatusBands(SDL_TRUE, 15, 0);
+	PSDL_SetFooterText("github.com/anight/picopop");
+
 	g_argc = 1;
 	g_argv = s_argv;
 
