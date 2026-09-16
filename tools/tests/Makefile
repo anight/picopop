@@ -41,9 +41,9 @@ CFLAGS := -std=c11 -Wall -Wextra -g $(PSDL_DEFS) \
 LIB    := $(wildcard $(PSDL)/src/psdl_*.c)
 OUT    := /tmp/picopop-test
 
-.PHONY: all verify digi mirror music budget opl3 dbopl-tables clean
+.PHONY: all verify digi mirror music budget opl3 dbopl-tables joystick clean
 
-all: $(RESOURCES) verify digi mirror dbopl-tables
+all: $(RESOURCES) verify digi mirror dbopl-tables joystick
 
 # The generated game resources, and the reference the converter's output is
 # checked against. Both come from PR/src/bin - see convert.py.
@@ -143,6 +143,13 @@ opl3: $(RESOURCES)
 	$(CC) $(CFLAGS) -o $(OUT)-wavdiff $(PSDL)/test/wav_diff.c -lm
 	$(OUT)-wavdiff $(OUT)-opl3-0.wav $(OUT)-opl3-1.wav $(OPL3_MIN_DB)
 
+# Check the integer stick-sector tests against the atan2() they replaced. Needs
+# no game data and no picosdl - it includes one header and links libm for the
+# reference side only.
+joystick:
+	$(CC) $(CFLAGS) -O2 -I $(POP) -o $(OUT)-joystick joystick_check.c -lm
+	$(OUT)-joystick
+
 # Check the build-time DBOPL tables against the ones dbopl.cpp computes at boot.
 #
 # tools/assets/dbopl_tables.c holds a copy of two loops from dbopl.cpp, which is
@@ -179,7 +186,7 @@ $(REFERENCE) $(RESOURCES):
 
 clean:
 	rm -rf $(OUT) $(OUT)-asan $(OUT)-verify $(OUT)-music $(OUT)-budget \
-	       $(OUT)-dbopl-* \
+	       $(OUT)-dbopl-* $(OUT)-joystick \
 	       $(OUT)-opl3-* $(OUT)-wavdiff $(OUT)-*.objs
 
 # Check the on-the-fly digi resampler against the 16x expansion it replaced.

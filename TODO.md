@@ -11,7 +11,7 @@ the command that produced it is given.
 
 ## The firmware still links a maths library
 
-Two sites reach it, and they are the only two. From the image:
+One site reaches it, and it is the only one. From the image:
 
 ```
 arm-none-eabi-objdump -d build/picopop.elf | awk \
@@ -21,12 +21,18 @@ arm-none-eabi-objdump -d build/picopop.elf | awk \
 | caller | calls | when |
 |---|---|---|
 | `midi_callback` | `powf`, `log2f` | **per note-on**, turning a MIDI note into an OPL block/F-number |
-| `get_joystick_state` | `atan2` | per poll, picking one of eight stick sectors |
 
-Neither is hard. The MIDI note conversion is indexed by
-`note - 81 + midi_semitones_higher`, a small integer, so it is a const
-`{block, fnum}` lookup. The joystick compares against fixed angles, so it is
-integer cross-multiplies and no trigonometry at all.
+Not hard. The conversion is indexed by `note - 81 + midi_semitones_higher`, a
+small integer, so it is a const `{block, fnum}` lookup.
+
+`get_joystick_state`'s `atan2` was the second and is **done**. It computed an
+angle only to compare it against six fixed rays, and for that only the side of
+the ray matters — so the tests are now integer, in
+`SDLPoP/src/joystick_sectors.h`. Squaring turns each into `y*y` against `3*x*x`
+for the 60-degree rays, where `tan^2 60` is exactly 3, so three of the four come
+out exact rather than approximated. `make -C tools/tests joystick` checks them
+against the atan2 form over both ADC grids in full and over every integer
+straddling every ray.
 
 `DBOPL::InitTables` was the third and is **done**: `tools/assets/dbopl_tables.c`
 generates its `pow`/`sin` tables and `InitTables()` copies them in at boot.
