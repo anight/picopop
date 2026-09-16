@@ -119,8 +119,9 @@ add_custom_command(
 )
 
 # Pico 2 W (RP2350). Override with -DPICO_BOARD=pico_w for the original board.
-# The system clock is 138 MHz, set by picosdl - below the RP2350's 150 MHz
-# default, so the core is not overclocked. The panel is: SCK is sysclk/2.
+# The system clock is 125 MHz, set by picosdl - below the RP2350's 150 MHz
+# default, so the core is not overclocked, and SCK is sysclk/2 = 62.5 MHz,
+# exactly the ST7789 maximum, so the panel is not either.
 set(PICO_BOARD pico2_w CACHE STRING "Board type")
 
 # picosdl carries the SDK bootstrap so there is one copy of it, not two.
