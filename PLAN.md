@@ -508,7 +508,7 @@ item on the list to get wrong quietly, because most of it will appear to work.
 - **The pad isolation latch is handled.** RP2350 powers up with pads isolated, so
   a raw FUNCSEL poke leaves a pin that will not drive. The display driver's mux
   now goes through `gpio_set_function()`
-  ([`dispPioSt7789.c:193`](picosdl/vendor/pio-st7789/dispPioSt7789.c:193)),
+  ([`dispPioSt7789.c:193`](picosdl/pio-st7789/dispPioSt7789.c:193)),
   which clears it. This was the gotcha most likely to present as dead hardware,
   and it is closed.
 - **The clock is 138 MHz**, below the RP2350 default of 150
@@ -1081,7 +1081,7 @@ are palette operations because on this design the palette is the CLUT (§5).
 ### How long the DMA actually holds the framebuffer
 
 Reason 1 is worth a number, because it is the one that decides this. The ST7789
-PIO program (`picosdl/vendor/pio-st7789/dispPioSt7789.c`) pushes SPI from SM1 as
+PIO program (`picosdl/pio-st7789/dispPioSt7789.c`) pushes SPI from SM1 as
 `OUT PINS,1` followed by `JMP Y--`, both with zero delay, with the clock on
 sideset — SCK low on the `OUT`, high on the `JMP`. So **SCK is structurally
 sysclk/2**, with no divider involved: both state machines run at `clkdiv = 1`.
