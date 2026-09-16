@@ -464,10 +464,24 @@ What remains:
   core 1 locked out (§8).
 - **Pairing UX** on a device whose only console is a serial port. `s`/`r`/`n`
   over the serial console exist now; the display could show link state too.
-- **Joystick mapping** as an alternative to the keyboard; SDLPoP has its own
-  joystick handling and `USE_AUTO_INPUT_MODE`.
-- **Lock-key LEDs**: picosdl takes over the keyboard decoder's callbacks after
-  `bt_app_setup()`, and `bt_app.c`'s LED handler is static. Two lines to restore.
+- ~~**Joystick mapping** as an alternative to the keyboard~~ — **done**, and it
+  needed more than mapping. Three of SDLPoP's own defaults are wrong for a board
+  with no keyboard and no `SDLPoP.ini` to change them, so all three are fixed under
+  `#ifdef PICOPOP`:
+  - `joystick_only_horizontal` defaults on, which discards the stick's Y axis
+    entirely — left and right worked and up and down did nothing at all.
+  - Upstream binds the pad's Y to jump, A to crouch and X to Shift. This build
+    wants X, B and A respectively, translated at one point rather than in both of
+    the parallel `switch` statements that would otherwise drift apart.
+  - Start and Back both mean "pause", because on a keyboard Space or Enter
+    dismisses the death prompt and resumes a pause. With a pad and no keyboard
+    neither was reachable: a death was a dead end, and a pause could not be undone
+    because the only key a pad could send was the one that re-paused. Start now
+    restarts a level after a death — guarded on `start_level >= 0` as well as
+    `Kid.alive`, because at the title screen there is no kid and the field reads
+    dead anyway — and any pad button resumes from a pause.
+- ~~**Lock-key LEDs**~~ — **done**; `bt_app.c`'s handler is exported and the input
+  backend passes it back.
 
 ### 3.7 Board migration to RP2350 — *the critical path*
 
