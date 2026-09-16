@@ -488,6 +488,12 @@ What remains:
   that BTstack and the CYW43 blob are not linked either. With none of them the game
   runs its attract mode for ever, which is a supported configuration:
   `SDL_NumJoysticks()` reports 0 so a client can tell there is nothing to read.
+- ~~**Optional audio**~~ — **done.** `PICOSDL_AUDIO=OFF` for a board with no
+  MAX98357A: the I2S driver and its PIO program are not built and `SDL_OpenAudio()`
+  fails, so `init_digi()` sets `digi_unavailable` and the game plays silently — a
+  path `midi.c` already guards. All sixteen combinations of the four options build
+  clean. Bluetooth is 431 KB of flash and 22 KB of RAM; audio, the joystick and the
+  gamepad are single-digit KB each, so only one of the four is about size.
 
 ### 3.7 Board migration to RP2350 — *the critical path*
 

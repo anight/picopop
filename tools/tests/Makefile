@@ -28,7 +28,16 @@ DATA   ?= $(ROOT)/SDLPoP/data
 GEN    ?= $(ROOT)/generated
 REFDIR := $(GEN)/resources
 
-CFLAGS := -std=c11 -Wall -Wextra -g -I $(PSDL)/include -I $(PSDL)/src -I $(REFDIR)
+# Defines every target here needs, in one place - the targets below do not all use
+# $(CFLAGS), and four copies of this drift.
+#
+# PSDL_HAVE_AUDIO: these all link picosdl's host backend, which implements the audio
+# interface, so they must say so or picosdl compiles its no-audio stubs and they
+# clash with the backend's. See the note in ../Makefile.
+PSDL_DEFS := -DPSDL_HAVE_AUDIO=1
+
+CFLAGS := -std=c11 -Wall -Wextra -g $(PSDL_DEFS) \
+          -I $(PSDL)/include -I $(PSDL)/src -I $(REFDIR)
 LIB    := $(wildcard $(PSDL)/src/psdl_*.c)
 OUT    := /tmp/picopop-test
 
@@ -49,7 +58,7 @@ REFERENCE := $(REFDIR)/reference.bin
 # driver when DBOPL is in play.
 MUSIC_CSRC = $(PSDL)/test/host_backend.c $(GLUE)/game_glue.c $(LIB) \
              $(POP)/midi.c $(RESOURCES)
-MUSIC_INC  = -I $(PSDL)/include -I $(PSDL)/src -I $(GLUE) -I $(REFDIR) \
+MUSIC_INC  = $(PSDL_DEFS) -I $(PSDL)/include -I $(PSDL)/src -I $(GLUE) -I $(REFDIR) \
              -I $(POP)
 # Overridable so the same tune can be rendered at a different optimisation level
 # and the results compared bit-for-bit; the firmware builds -Os (MinSizeRel).
@@ -143,7 +152,7 @@ clean:
 
 # Check the on-the-fly digi resampler against the 16x expansion it replaced.
 digi: $(RESOURCES)
-	$(CC) -std=c11 -O2 -g -Wall -Wextra -I $(PSDL)/include -I $(PSDL)/src \
+	$(CC) -std=c11 -O2 -g -Wall -Wextra $(PSDL_DEFS) -I $(PSDL)/include -I $(PSDL)/src \
 	  -I $(POP) -I $(REFDIR) -o /tmp/picopop-digi-check \
 	  digi_check.c $(LIB) $(PSDL)/test/host_backend.c $(RESOURCES) -lm
 	/tmp/picopop-digi-check
@@ -151,7 +160,7 @@ digi: $(RESOURCES)
 # Check that a mirrored sprite is an exact reversal - the path a right-facing
 # character is drawn through.
 mirror: $(RESOURCES)
-	$(CC) -std=c11 -O2 -g -Wall -Wextra -I $(PSDL)/include -I $(PSDL)/src \
+	$(CC) -std=c11 -O2 -g -Wall -Wextra $(PSDL_DEFS) -I $(PSDL)/include -I $(PSDL)/src \
 	  -I $(POP) -I $(REFDIR) -o /tmp/picopop-mirror-check \
 	  mirror_check.c $(LIB) $(PSDL)/test/host_backend.c $(RESOURCES) -lm
 	/tmp/picopop-mirror-check

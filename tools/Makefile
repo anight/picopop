@@ -30,7 +30,13 @@ CXX     ?= c++
 
 # -DPICOPOP=1 marks the port's own conditionals in the game sources.
 # _GNU_SOURCE is what SDLPoP's own Makefile passes.
-DEFS    := -D_GNU_SOURCE=1 -DPICOPOP=1 -DPICOPOP_USE_DBOPL=1 $(DEFS_EXTRA)
+# PSDL_HAVE_AUDIO: this backend has an audio device - it captures the mixer to a
+# WAV - so it must say so. Without it picosdl compiles its no-audio stubs and they
+# clash with the ones host_backend.c provides. The input PSDL_HAVE_* macros are
+# deliberately absent: the host has no joystick, pad or Bluetooth, and an undefined
+# macro is 0 in #if, which is the right answer.
+DEFS    := -D_GNU_SOURCE=1 -DPICOPOP=1 -DPICOPOP_USE_DBOPL=1 -DPSDL_HAVE_AUDIO=1 \
+           $(DEFS_EXTRA)
 
 INC     := -I $(PSDL)/include -I $(PSDL)/src -I $(POP) -I $(RES) -I .
 WARN    := -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare \

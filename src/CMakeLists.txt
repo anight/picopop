@@ -146,8 +146,13 @@ set(PICOSDL_BUILD_DEMO ON CACHE BOOL "Build picosdl-demo for board bring-up")
 #
 #   cmake -S src -B build -DPICOSDL_INPUT_BT_KEYBOARD=OFF
 #
+# PICOSDL_AUDIO is on the same footing, for a board with no MAX98357A and no
+# speaker: SDL_OpenAudio() then fails, this game sets digi_unavailable and plays
+# silently, and PIO1, DMA 4-5 and core 1 go unused.
+#
 # Bluetooth is the one worth turning off when it is not wanted: it carries BTstack
-# twice over and the CYW43 firmware blob, 234 KB of which is not code.
+# twice over and the CYW43 firmware blob, 234 KB of which is not code. It is 431 KB
+# of flash and 22 KB of RAM; the other three are single-digit KB each.
 #
 # With no input device at all the game still runs - it stays in its attract mode,
 # because SDL_NumJoysticks() reports 0 and no key ever arrives, so nothing ever
