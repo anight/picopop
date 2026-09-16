@@ -119,6 +119,43 @@ gone, and the only reachable `malloc` callers left are two one-shot SDK calls at
 init. Unlike the rule above this one is not yet enforced at link time, which is
 the open item in [`TODO.md`](TODO.md).
 
+## Licence
+
+**GPL-3.0-or-later**, and that is not a preference — see [`LICENSE`](LICENSE).
+
+The firmware is a derivative work of [SDLPoP](https://github.com/NagyD/SDLPoP),
+which is GPL-3.0-or-later, and this port does not merely link it: `seg009.c`,
+`seg000.c` and `midi.c` are substantially rewritten. Anything built from that has
+to carry the same terms.
+
+The rest of what goes into the image is compatible with it, which is worth
+recording because one incompatible component would have been a real problem:
+
+| component | licence |
+|---|---|
+| SDLPoP | GPL-3.0-**or-later** — sets the floor |
+| DBOPL, from DOSBox-X | GPL-2.0-**or-later** |
+| Nuked OPL3 (`PICOPOP_OPL=nuked`) | GPL-2.0-**or-later** |
+| Princed Resources (`PR/`) | GPL-2.0-**or-later** |
+| picosdl | BSD-2-Clause |
+| pio-st7789, pio-i2s, Pico SDK | BSD-2 / BSD-3-Clause |
+| the status-band font | public domain (X11 misc-fixed) |
+
+The three GPL-2.0 components are all *or-later*, so they can be used under v3. A
+GPL-2.0-**only** component could not have been, and that is the usual way a
+project like this ends up undistributable.
+
+**picosdl is BSD-2-Clause, deliberately.** It contains no SDLPoP code — it is an
+independent implementation of the slice of SDL2 this game uses — and its own
+dependencies are permissive. Putting the GPL on it would defeat the point of
+keeping it a standalone library: someone writing closed-source firmware for a
+Pico 2 W should be able to use it. Permissive code combines into a GPLv3 work
+without friction, so this costs the firmware nothing.
+
+**The game's data files are not covered by any of this.** They are not
+distributed here and not in this repository's history; you supply your own, as
+described above.
+
 ## Working on it
 
 Almost everything is quicker to find on the desktop than on the board, and some
