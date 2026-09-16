@@ -482,6 +482,12 @@ What remains:
     dead anyway — and any pad button resumes from a pause.
 - ~~**Lock-key LEDs**~~ — **done**; `bt_app.c`'s handler is exported and the input
   backend passes it back.
+- ~~**Optional input devices**~~ — **done.** `PICOSDL_INPUT_BT_KEYBOARD`,
+  `PICOSDL_INPUT_JOYSTICK` and `PICOSDL_INPUT_GAMEPAD` are independent, default on,
+  and none is required. Off means the driver is not compiled — and for Bluetooth,
+  that BTstack and the CYW43 blob are not linked either. With none of them the game
+  runs its attract mode for ever, which is a supported configuration:
+  `SDL_NumJoysticks()` reports 0 so a client can tell there is nothing to read.
 
 ### 3.7 Board migration to RP2350 — *the critical path*
 

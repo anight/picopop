@@ -138,6 +138,21 @@ pico_sdk_init()
 # library, and needs no DAT files - so it is the library's example rather than
 # ours. It still lands at build/picosdl-demo.elf.
 set(PICOSDL_BUILD_DEMO ON CACHE BOOL "Build picosdl-demo for board bring-up")
+
+#
+# Input devices are picosdl's options and all default on. They are independent and
+# none is required, so a board with only some of them - or none - is a supported
+# configuration rather than something to work around:
+#
+#   cmake -S src -B build -DPICOSDL_INPUT_BT_KEYBOARD=OFF
+#
+# Bluetooth is the one worth turning off when it is not wanted: it carries BTstack
+# twice over and the CYW43 firmware blob, 234 KB of which is not code.
+#
+# With no input device at all the game still runs - it stays in its attract mode,
+# because SDL_NumJoysticks() reports 0 and no key ever arrives, so nothing ever
+# interrupts the demo. That is the intended outcome, not a failure.
+#
 add_subdirectory(${PICOSDL_DIR} picosdl)
 
 # ------------------------------------------------------------ OPL emulator
