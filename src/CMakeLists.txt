@@ -153,6 +153,34 @@ endfunction()
 picopop_generate_table(dbopl_tables.c    dbopl_tables.inc    "Generating the DBOPL tables")
 picopop_generate_table(midi_fnum_table.c midi_fnum_table.inc "Generating the MIDI F-number table")
 
+# The game's MIDI tunes, parsed at build time so the firmware needs neither a
+# parser nor the 80 KiB event pool to parse into.
+#
+# Not a picopop_generate_table() because this one is not pure arithmetic: it needs
+# the converted resources and SDLPoP's own midi.c, so it host-compiles several
+# files rather than one. Reusing the real parse_midi() is deliberate - a second
+# implementation of the parser could disagree with the firmware's, and this cannot.
+execute_process(
+    COMMAND ${PICOPOP_ROOT}/tools/assets/gen-midi-tables.sh ${PICOPOP_GENERATED}
+    RESULT_VARIABLE PICOPOP_MIDI_RESULT
+    OUTPUT_VARIABLE PICOPOP_MIDI_OUTPUT
+    ERROR_VARIABLE  PICOPOP_MIDI_OUTPUT
+)
+if (NOT PICOPOP_MIDI_RESULT EQUAL 0)
+    message(FATAL_ERROR "${PICOPOP_MIDI_OUTPUT}")
+endif()
+
+add_custom_command(
+    OUTPUT  ${PICOPOP_GENERATED}/midi_tables.inc
+    COMMAND ${PICOPOP_ROOT}/tools/assets/gen-midi-tables.sh ${PICOPOP_GENERATED}
+    DEPENDS ${PICOPOP_ROOT}/tools/assets/midi_tables.c
+            ${PICOPOP_ROOT}/tools/assets/gen-midi-tables.sh
+            ${SDLPOP_DIR}/midi.c
+            ${PICOPOP_RESOURCES}/resources.c
+    COMMENT "Parsing the game's MIDI tunes"
+    VERBATIM
+)
+
 # Pico 2 W (RP2350). Override with -DPICO_BOARD=pico_w for the original board.
 # The system clock is 125 MHz, set by picosdl - below the RP2350's 150 MHz
 # default, so the core is not overclocked, and SCK is sysclk/2 = 62.5 MHz,
@@ -251,6 +279,7 @@ add_executable(picopop
     ${SDLPOP_DIR}/screenshot.c ${SDLPOP_DIR}/menu.c     ${SDLPOP_DIR}/midi.c
     ${PICOPOP_RESOURCES}/resources.c
     ${PICOPOP_GENERATED}/midi_fnum_table.inc
+    ${PICOPOP_GENERATED}/midi_tables.inc
 )
 picopop_add_opl(picopop)
 
@@ -262,6 +291,10 @@ target_compile_definitions(picopop PRIVATE PICOPOP=1)
 # Note-on takes a table lookup rather than powf() and log2f(); see
 # tools/assets/midi_fnum_table.c and the note at the use site in midi.c.
 target_compile_definitions(picopop PRIVATE PICOPOP_MIDI_FNUM_TABLE=1)
+
+# Tunes come pre-parsed from flash: no parse_midi() in the firmware and no 80 KiB
+# event pool. See tools/assets/midi_tables.c and `make -C tools/tests midi-tables`.
+target_compile_definitions(picopop PRIVATE PICOPOP_MIDI_TABLES=1)
 
 # Print the mixer's load once a second on the console. It is the instrument
 # pointed at the one deadline that cannot be missed quietly, and what decides

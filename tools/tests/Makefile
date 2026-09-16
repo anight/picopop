@@ -41,9 +41,9 @@ CFLAGS := -std=c11 -Wall -Wextra -g $(PSDL_DEFS) \
 LIB    := $(wildcard $(PSDL)/src/psdl_*.c)
 OUT    := /tmp/picopop-test
 
-.PHONY: all verify digi mirror music budget opl3 dbopl-tables midi-fnum joystick clean
+.PHONY: all verify digi mirror music budget opl3 dbopl-tables midi-fnum joystick midi-pool midi-tables clean
 
-all: $(RESOURCES) verify digi mirror dbopl-tables midi-fnum joystick
+all: $(RESOURCES) verify digi mirror dbopl-tables midi-fnum joystick midi-tables
 
 # The generated game resources, and the reference the converter's output is
 # checked against. Both come from PR/src/bin - see convert.py.
@@ -203,12 +203,47 @@ midi-fnum-table: MUSIC_OPT += -DPICOPOP_MIDI_FNUM_TABLE=1 -I $(ROOT)/generated
 midi-fnum-table:
 	$(call build_music,$(OUT)-fnum-table,render_music.c)
 
+# The build-time MIDI tables against the runtime parser they replace.
+#
+# Renders every tune in the game to its end, twice - once parsing at run time,
+# once reading the pre-parsed tables from flash - and requires the two digests to
+# match line for line. 6761 events across 22 tunes, so a wrong delta_time or a
+# misplaced track boundary anywhere shows up here.
+MIDI_TABLES_INC = $(ROOT)/generated/midi_tables.inc
+
+$(MIDI_TABLES_INC): $(ROOT)/tools/assets/midi_tables.c \
+                    $(ROOT)/tools/assets/gen-midi-tables.sh \
+                    $(POP)/midi.c $(RESOURCES)
+	$(ROOT)/tools/assets/gen-midi-tables.sh $(ROOT)/generated
+
+midi-tables: $(RESOURCES) $(MIDI_TABLES_INC)
+	@$(call build_music,$(OUT)-mt-parse,midi_tables_check.c)
+	@$(MAKE) -s --no-print-directory midi-tables-flash
+	@$(OUT)-mt-parse > $(OUT)-mt-parse.txt
+	@$(OUT)-mt-flash > $(OUT)-mt-flash.txt
+	@diff -u $(OUT)-mt-parse.txt $(OUT)-mt-flash.txt > /dev/null \
+	  && echo "OK: all $$(grep -c ended $(OUT)-mt-parse.txt) tunes render identically from the build-time tables" \
+	  || { echo "FAIL: the pre-parsed tables do not match the parser"; \
+	       diff -u $(OUT)-mt-parse.txt $(OUT)-mt-flash.txt | head -20; exit 1; }
+
+midi-tables-flash: MUSIC_OPT += -DPICOPOP_MIDI_TABLES=1 -I $(ROOT)/generated
+midi-tables-flash:
+	$(call build_music,$(OUT)-mt-flash,midi_tables_check.c)
+
+# What the MIDI event pool actually has to hold: events and tracks per tune, and
+# the largest value each field of midi_event_type ever takes. Parses every MIDI
+# resource in the game through the real parse_midi(), so the numbers are the
+# firmware's own rather than an estimate.
+midi-pool: $(RESOURCES)
+	$(call build_music,$(OUT)-midi-pool,midi_pool_probe.c)
+	$(OUT)-midi-pool
+
 $(REFERENCE) $(RESOURCES):
 	@$(ROOT)/tools/assets/build-resources.sh --reference $(DATA) $(GEN)
 
 clean:
 	rm -rf $(OUT) $(OUT)-asan $(OUT)-verify $(OUT)-music $(OUT)-budget \
-	       $(OUT)-dbopl-* $(OUT)-fnum-* $(OUT)-joystick \
+	       $(OUT)-dbopl-* $(OUT)-fnum-* $(OUT)-joystick $(OUT)-mt-* $(OUT)-midi-pool \
 	       $(OUT)-opl3-* $(OUT)-wavdiff $(OUT)-*.objs
 
 # Check the on-the-fly digi resampler against the 16x expansion it replaced.
