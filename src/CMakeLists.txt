@@ -34,7 +34,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #
 # -Os is tempting: it costs nothing visible and saves 127 KB of .text (34% of the
 # code; 130 KB of the flash image, 45.3% -> 42.2% of 4 MB). The frame rate does
-# not care - it is panel-bound, see PLAN.md section 10.
+# not care - it is panel-bound, see picosdl/README.md.
 #
 # The mixer does. DBOPL at -Os produces bit-identical output, verified by
 # rendering the title theme both ways and comparing the WAVs byte for byte, but
@@ -171,7 +171,7 @@ add_subdirectory(${PICOSDL_DIR} picosdl)
 #   nuked  Nuked OPL3 1.7.4, what SDLPoP ships, with picopop's silent-slot and
 #          unfolded-table optimisations. More faithful, and much more expensive.
 #
-# See PLAN.md section 8.
+# See TODO.md.
 set(PICOPOP_OPL dbopl CACHE STRING "OPL emulator: dbopl or nuked")
 set_property(CACHE PICOPOP_OPL PROPERTY STRINGS dbopl nuked)
 message(STATUS "OPL emulator: ${PICOPOP_OPL}")
@@ -199,7 +199,7 @@ endfunction()
 
 # ----------------------------------------------------------------- the game
 #
-# stb_vorbis.c is deliberately absent (PLAN.md section 9: 54 of the 64
+# stb_vorbis.c is deliberately absent (TODO.md: 54 of the 64
 # allocation sites, and the Ogg path is compiled out anyway), and so is
 # SDLPoP's main.c - the entry point here is main.c beside this file, which
 # brings the hardware up and then calls pop_main().
@@ -221,9 +221,10 @@ target_include_directories(picopop PRIVATE
     ${PICOSDL_DIR}/src ${SDLPOP_DIR} ${PICOPOP_RESOURCES})
 target_compile_definitions(picopop PRIVATE PICOPOP=1)
 
-# Print the mixer's load once a second on the console. It is the number PLAN.md
-# section 3.7 still owes for the RP2350, and what decides whether the output
-# rate can go back to 44100 - see the note on digi_samplerate in seg009.c.
+# Print the mixer's load once a second on the console. It is the instrument
+# pointed at the one deadline that cannot be missed quietly, and what decides
+# whether the output rate can go back to 44100 - see the note on
+# digi_samplerate in seg009.c.
 target_compile_definitions(picopop PRIVATE PICOPOP_REPORT_AUDIO_LOAD=1)
 
 # Our own code only; SDLPoP's is not warning-clean under -Wextra.

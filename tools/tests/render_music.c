@@ -8,9 +8,9 @@
  * before it ever reaches a board: is it silence, is it the right tune, is it
  * the right tempo.
  *
- * It also times the synthesis, which is the number PLAN.md's largest open
- * question turns on. The host figure is not the Pico figure, but a ratio of
- * host-seconds per audio-second bounds what to expect.
+ * It also times the synthesis, which is the number the DBOPL-versus-Nuked
+ * question in TODO.md turns on. The host figure is not the Pico figure, but a
+ * ratio of host-seconds per audio-second bounds what to expect.
  *
  *   make -C picosdl/test music
  *   aplay /tmp/pop-main-theme.wav

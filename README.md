@@ -3,8 +3,9 @@
 Prince of Persia on a Raspberry Pi Pico 2 W, with an ST7789 panel, an I2S DAC,
 a Bluetooth keyboard and an analog stick.
 
-`PLAN.md` is the working document: what is done, what is not, and the
-measurements behind the design decisions.
+It works: the game runs on the board with sound, a pad and a Bluetooth
+keyboard. [`TODO.md`](TODO.md) is what is left, and picosdl keeps
+[its own list](picosdl/TODO.md) for the SDL layer.
 
 ## Layout
 
@@ -73,7 +74,8 @@ If you already cloned without `--recurse-submodules`:
 git submodule update --init --recursive
 ```
 
-The recursion matters: picosdl has a submodule of its own, the ST7789 driver.
+The recursion matters: picosdl has two submodules of its own, the ST7789
+display driver and the I2S output driver.
 
 `build/picosdl-demo.uf2` is also produced. It brings up the panel, the DAC, the
 radio and the stick without running the game, and stays useful as a bisection

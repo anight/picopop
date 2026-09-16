@@ -104,7 +104,7 @@ verify: $(REFERENCE)
 
 # Render one of the game's Adlib tunes to a WAV, through the same midi.c and
 # Nuked OPL3 the Pico runs. Checks the music path works and times the synthesis,
-# which is the number PLAN.md's largest open question turns on.
+# which is the number the OPL question in TODO.md turns on.
 #
 #   make music              the title theme
 #   make music ID=10056     the winning theme

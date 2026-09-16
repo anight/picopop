@@ -3,7 +3,7 @@
  * How much flash would it cost to ship the game's music as audio instead of
  * synthesising it?
  *
- * Nuked OPL3 looks too expensive for an RP2040 core (PLAN.md 8), and the
+ * Nuked OPL3 looks too expensive for an RP2040 core (TODO.md), and the
  * standing fallback is to pre-render the tunes at build time. That trades CPU
  * for flash, and nobody had costed the flash side. This renders every MIDI
  * resource in the game to the end, measures it, and prices the result under the

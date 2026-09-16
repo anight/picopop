@@ -17,7 +17,7 @@
  * The resource chain is the same design as seg009.c's: DAT files are pushed on
  * a list and a lookup walks it most-recent-first. Here it is a fixed array of
  * four instead of a malloc'd list, which is where the game's is heading anyway
- * (PLAN.md 3.4).
+ * (TODO.md).
  */
 #include <stdio.h>
 #include <string.h>

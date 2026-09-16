@@ -1,9 +1,9 @@
 # Prince of Persia on picosdl - desktop build.
 #
 # This builds the *game* against picosdl rather than against SDL2, with a
-# headless backend that writes presented frames to disk. It is the loop PLAN.md
-# section 3.1 is meant to be developed in: everything except the panel, the DAC
-# and the radio is the same code the firmware runs, so a rendering bug found
+# headless backend that writes presented frames to disk. It is the loop the
+# rendering work is meant to be developed in: everything except the panel, the
+# DAC and the radio is the same code the firmware runs, so a rendering bug found
 # here is a rendering bug on the board.
 #
 #   make -C tools          build
@@ -48,7 +48,7 @@ CXXFLAGS := -std=c++17 $(OPT) -fno-exceptions -fno-rtti $(WARN) $(DEFS) $(INC)
 
 # ---------------------------------------------------------------- sources
 
-# stb_vorbis.c is deliberately absent: PLAN.md section 9: it is 54 of the 64
+# stb_vorbis.c is deliberately absent: it is 54 of the 64
 # allocation sites in the tree and the Ogg path is compiled out anyway.
 POP_SRC := \
 	$(POP)/main.c      $(POP)/data.c      $(POP)/seg000.c   $(POP)/seg001.c \
