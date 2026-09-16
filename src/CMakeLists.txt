@@ -222,6 +222,14 @@ set(PICOSDL_BUILD_DEMO ON CACHE BOOL "Build picosdl-demo for board bring-up")
 # because SDL_NumJoysticks() reports 0 and no key ever arrives, so nothing ever
 # interrupts the demo. That is the intended outcome, not a failure.
 #
+# One screen buffer, not two: the offscreen surface becomes a view of the one the
+# panel is sent, and the panel's own memory holds the frame being looked at. Worth
+# 62.5 KB - 52% of this firmware's RAM was the screen pool - and it costs the
+# overlap between drawing and pushing. Set before add_subdirectory so picosdl,
+# which owns the pool, is built with it; the game side is
+# PICOPOP_ONE_SCREEN_BUFFER below.
+set(PICOSDL_SCREEN_BUFFERS 1 CACHE STRING "" FORCE)
+
 add_subdirectory(${PICOSDL_DIR} picosdl)
 
 # ------------------------------------------------------------ OPL emulator
@@ -295,6 +303,10 @@ target_compile_definitions(picopop PRIVATE PICOPOP_MIDI_FNUM_TABLE=1)
 # Tunes come pre-parsed from flash: no parse_midi() in the firmware and no 80 KiB
 # event pool. See tools/assets/midi_tables.c and `make -C tools/tests midi-tables`.
 target_compile_definitions(picopop PRIVATE PICOPOP_MIDI_TABLES=1)
+
+# One screen buffer: the offscreen surface is a view of the one the panel is sent,
+# and the reveal mechanisms in seg009.c keep the two-buffer visibility semantics.
+target_compile_definitions(picopop PRIVATE PICOPOP_ONE_SCREEN_BUFFER=1)
 
 # Print the mixer's load once a second on the console. It is the instrument
 # pointed at the one deadline that cannot be missed quietly, and what decides

@@ -15,6 +15,12 @@
  *   PICOPOP_EXIT_AFTER  exit(0) after this many presents (default: never)
  *   PICOPOP_FAST        if set, delays return immediately and the clock is
  *                       virtual, so a run finishes as fast as it can
+ *   PICOPOP_FRAMEHASH   print "present hash" per present instead of writing
+ *                       PNGs. For comparing two builds densely: every frame is
+ *                       covered, nothing hits the disk, and because the hash is
+ *                       of the retained panel contents it catches a wrong pixel
+ *                       anywhere. Two runs that drift apart in time still share
+ *                       the same set of hashes if they render the same states.
  *   PICOPOP_WAV         write the mixer output to this path as a WAV, so the
  *                       music and the digi sounds can actually be listened to
  *   PICOPOP_WATCHDOG    seconds of wall clock after which to dump a backtrace
@@ -45,6 +51,7 @@ static int         s_frame_every  = 1;
 static int         s_max_frames   = 200;
 static int         s_exit_after;
 static int         s_fast;
+static int         s_framehash;
 static int         s_frames_written;
 static int         s_env_read;
 
@@ -64,6 +71,7 @@ static void read_env(void)
 	if ((v = getenv("PICOPOP_EXIT_AFTER")) != NULL)
 		s_exit_after = atoi(v);
 	s_fast = getenv("PICOPOP_FAST") != NULL;
+	s_framehash = getenv("PICOPOP_FRAMEHASH") != NULL;
 }
 
 /*
@@ -104,14 +112,59 @@ void psdl_backend_video_init(int w, int h)
 		       s_framedir, s_frame_every, s_max_frames);
 }
 
-void psdl_backend_video_present(const Uint8 *pixels, int w, int h, int pitch)
+/*
+ * Partial pushes land in host_last_frame and are never cleared, which is how the
+ * real panel behaves: it keeps whatever it was last sent. Frames are written from
+ * that retained buffer rather than from `pixels`, so a client that pushes only
+ * what changed - or that has only one buffer and leans on the panel to hold the
+ * rest - is captured the way it will actually look.
+ */
+static void capture_frame(void);
+
+void psdl_backend_video_present_rect(const Uint8 *pixels, int pitch,
+                                     int x, int y, int w, int h)
 {
 	read_env();
 
-	for (int y = 0; y < h && y < PSDL_SCREEN_H; ++y)
-		memcpy(host_last_frame + (size_t)y * PSDL_SCREEN_W,
-		       pixels + (size_t)y * pitch,
-		       (size_t)(w < PSDL_SCREEN_W ? w : PSDL_SCREEN_W));
+	for (int row = 0; row < h; ++row) {
+		int dy = y + row;
+		if (dy < 0 || dy >= PSDL_SCREEN_H)
+			continue;
+		int cx = x, cw = w;
+		if (cx < 0) { cw += cx; cx = 0; }
+		if (cx + cw > PSDL_SCREEN_W) cw = PSDL_SCREEN_W - cx;
+		if (cw <= 0)
+			continue;
+		memcpy(host_last_frame + (size_t)dy * PSDL_SCREEN_W + cx,
+		       pixels + (size_t)dy * pitch + cx, (size_t)cw);
+	}
+
+	capture_frame();
+}
+
+static void capture_frame(void)
+{
+	if (s_framehash) {
+		/* FNV-1a over the retained frame plus the palette, since the same indices
+		 * through a different CLUT are a different picture. */
+		unsigned long long px = 14695981039346656037ull;
+		const unsigned char *q = host_last_frame;
+		for (size_t i = 0; i < sizeof(host_last_frame); ++i) {
+			px ^= q[i]; px *= 1099511628211ull;
+		}
+		/* Pixels and palette separately, because they go wrong for different
+		 * reasons. A wrong pixel is a rendering bug; a right pixel through a
+		 * different CLUT is usually just a fade at a different point, which two
+		 * builds doing different amounts of work per frame will always disagree
+		 * about. */
+		unsigned long long pal = px;
+		for (int i = 0; i < 256; ++i) {
+			pal ^= host_clut[i].r; pal *= 1099511628211ull;
+			pal ^= host_clut[i].g; pal *= 1099511628211ull;
+			pal ^= host_clut[i].b; pal *= 1099511628211ull;
+		}
+		printf("FRAME %d %016llx %016llx\n", host_present_count, px, pal);
+	}
 
 	if (s_framedir != NULL &&
 	    host_present_count % s_frame_every == 0 &&
@@ -125,7 +178,8 @@ void psdl_backend_video_present(const Uint8 *pixels, int w, int h, int pitch)
 		char path[512];
 		snprintf(path, sizeof(path), "%s/frame_%05d.png",
 		         s_framedir, host_present_count);
-		if (png_write_indexed(path, pixels, w, h, pitch, pal) != 0)
+		if (png_write_indexed(path, host_last_frame, PSDL_SCREEN_W, PSDL_SCREEN_H,
+		                      PSDL_SCREEN_W, pal) != 0)
 			fprintf(stderr, "host: could not write %s\n", path);
 		else
 			++s_frames_written;
@@ -149,6 +203,20 @@ void psdl_backend_video_present(const Uint8 *pixels, int w, int h, int pitch)
 		fflush(stdout);
 		exit(0);
 	}
+}
+
+
+/*
+ * Every push is a capture point, partial ones included. It used to capture only in
+ * the full-frame present, which meant a client pushing just what changed - a wipe
+ * transition, or anything single-buffered - had those frames missing from the
+ * record entirely. Comparing two builds then silently skipped exactly the frames
+ * most likely to differ.
+ */
+void psdl_backend_video_present(const Uint8 *pixels, int w, int h, int pitch)
+{
+	read_env();
+	psdl_backend_video_present_rect(pixels, pitch, 0, 0, w, h);
 }
 
 void psdl_backend_video_sync(void) { }
