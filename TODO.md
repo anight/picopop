@@ -11,7 +11,7 @@ the command that produced it is given.
 
 ## The firmware still links a maths library
 
-Three sites reach it, and they are the only three. From the image:
+Two sites reach it, and they are the only two. From the image:
 
 ```
 arm-none-eabi-objdump -d build/picopop.elf | awk \
@@ -20,24 +20,28 @@ arm-none-eabi-objdump -d build/picopop.elf | awk \
 
 | caller | calls | when |
 |---|---|---|
-| `DBOPL::InitTables` | `pow`, `sin` | once at boot, building four tables |
 | `midi_callback` | `powf`, `log2f` | **per note-on**, turning a MIDI note into an OPL block/F-number |
 | `get_joystick_state` | `atan2` | per poll, picking one of eight stick sectors |
 
-None is hard, and each has an obvious treatment. DBOPL's tables are constants —
-emit them from a build-time generator. The MIDI note conversion is indexed by
+Neither is hard. The MIDI note conversion is indexed by
 `note - 81 + midi_semitones_higher`, a small integer, so it is a const
 `{block, fnum}` lookup. The joystick compares against fixed angles, so it is
 integer cross-multiplies and no trigonometry at all.
 
-Doing the first also reclaims RAM, which is the part that makes it worth
-scheduling rather than leaving:
+`DBOPL::InitTables` was the third and is **done**: `tools/assets/dbopl_tables.c`
+generates its `pow`/`sin` tables and `InitTables()` copies them in at boot.
+`make -C tools/tests dbopl-tables` renders the same tune with the generated
+tables and with the computed ones and requires the WAVs to match byte for byte,
+so the copied loops cannot drift from the originals unnoticed.
 
-```
-arm-none-eabi-nm -S build/picopop.elf | grep DBOPL.*Table
-20004c38 00002000 b _ZN5DBOPLL9WaveTableE     8192 B
-20009f38 00000300 b _ZN5DBOPLL8MulTableE       768 B
-```
+That one did not go the way this entry predicted, which is worth keeping. It
+claimed the change would reclaim 8,960 bytes of `.bss`. It does not: leaving the
+tables in flash and reading them where they lie costs the mixer six points of
+its block budget — 24-25% average became 30-31% — because the RP2350's XIP cache
+is 8 KB and `WaveTable` alone is 8 KB, so a table indexed once per sample per
+operator evicts everything else on its way past. Copying them into RAM at boot
+gives the libm removal at no CPU cost and no RAM saving. **The `.bss` was the
+wrong reason to do it; the maths library was the right one.**
 
 **What the rule is, precisely.** The M33 has a single-precision FPU, so `float`
 add, subtract, multiply, divide and `sqrt` are single instructions and are fine.

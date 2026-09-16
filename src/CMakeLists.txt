@@ -118,6 +118,30 @@ add_custom_command(
     VERBATIM
 )
 
+# DBOPL's two floating-point tables, computed here rather than on the board. It
+# is what keeps pow() and sin() out of the firmware, and it hands back 8,960
+# bytes of .bss. Unlike the resources this needs no DAT files - it is pure
+# arithmetic - but it is generated rather than committed so it cannot drift from
+# the expressions in dbopl.cpp without the build noticing.
+execute_process(
+    COMMAND ${PICOPOP_ROOT}/tools/assets/gen-dbopl-tables.sh ${PICOPOP_GENERATED}
+    RESULT_VARIABLE PICOPOP_DBOPL_RESULT
+    OUTPUT_VARIABLE PICOPOP_DBOPL_OUTPUT
+    ERROR_VARIABLE  PICOPOP_DBOPL_OUTPUT
+)
+if (NOT PICOPOP_DBOPL_RESULT EQUAL 0)
+    message(FATAL_ERROR "${PICOPOP_DBOPL_OUTPUT}")
+endif()
+
+add_custom_command(
+    OUTPUT  ${PICOPOP_GENERATED}/dbopl_tables.inc
+    COMMAND ${PICOPOP_ROOT}/tools/assets/gen-dbopl-tables.sh ${PICOPOP_GENERATED}
+    DEPENDS ${PICOPOP_ROOT}/tools/assets/dbopl_tables.c
+            ${PICOPOP_ROOT}/tools/assets/gen-dbopl-tables.sh
+    COMMENT "Generating the DBOPL tables"
+    VERBATIM
+)
+
 # Pico 2 W (RP2350). Override with -DPICO_BOARD=pico_w for the original board.
 # The system clock is 125 MHz, set by picosdl - below the RP2350's 150 MHz
 # default, so the core is not overclocked, and SCK is sysclk/2 = 62.5 MHz,
@@ -179,7 +203,9 @@ message(STATUS "OPL emulator: ${PICOPOP_OPL}")
 function(picopop_add_opl target)
     if (PICOPOP_OPL STREQUAL "dbopl")
         target_sources(${target} PRIVATE
-            ${SDLPOP_DIR}/dbopl.cpp ${SDLPOP_DIR}/dbopl_adapter.cpp)
+            ${SDLPOP_DIR}/dbopl.cpp ${SDLPOP_DIR}/dbopl_adapter.cpp
+            ${PICOPOP_GENERATED}/dbopl_tables.inc)
+        target_compile_definitions(${target} PRIVATE PICOPOP_DBOPL_CONST_TABLES=1)
         # opl3.h switches on this: midi.c keeps including it, but gets a token
         # opl3_chip instead of Nuked's 19 KB struct, and opl3.c compiles to
         # nothing.
@@ -218,7 +244,7 @@ picopop_add_opl(picopop)
 
 target_link_libraries(picopop PRIVATE picosdl pico_float)
 target_include_directories(picopop PRIVATE
-    ${PICOSDL_DIR}/src ${SDLPOP_DIR} ${PICOPOP_RESOURCES})
+    ${PICOSDL_DIR}/src ${SDLPOP_DIR} ${PICOPOP_RESOURCES} ${PICOPOP_GENERATED})
 target_compile_definitions(picopop PRIVATE PICOPOP=1)
 
 # Print the mixer's load once a second on the console. It is the instrument

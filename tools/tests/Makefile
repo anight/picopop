@@ -41,9 +41,9 @@ CFLAGS := -std=c11 -Wall -Wextra -g $(PSDL_DEFS) \
 LIB    := $(wildcard $(PSDL)/src/psdl_*.c)
 OUT    := /tmp/picopop-test
 
-.PHONY: all verify digi mirror music budget opl3 clean
+.PHONY: all verify digi mirror music budget opl3 dbopl-tables clean
 
-all: $(RESOURCES) verify digi mirror
+all: $(RESOURCES) verify digi mirror dbopl-tables
 
 # The generated game resources, and the reference the converter's output is
 # checked against. Both come from PR/src/bin - see convert.py.
@@ -143,11 +143,43 @@ opl3: $(RESOURCES)
 	$(CC) $(CFLAGS) -o $(OUT)-wavdiff $(PSDL)/test/wav_diff.c -lm
 	$(OUT)-wavdiff $(OUT)-opl3-0.wav $(OUT)-opl3-1.wav $(OPL3_MIN_DB)
 
+# Check the build-time DBOPL tables against the ones dbopl.cpp computes at boot.
+#
+# tools/assets/dbopl_tables.c holds a copy of two loops from dbopl.cpp, which is
+# the only way to generate them without a translation step and also the only way
+# for them to drift. So render the same tune twice - once with the generated
+# tables, once with the runtime ones - and require the WAVs to be identical byte
+# for byte. That covers the tables through the code that actually reads them,
+# rather than comparing arrays and hoping they are wired up the same way.
+#
+# Note what it does not cover: the firmware's own libm is newlib's, not the
+# host's, so a table the board would have computed could differ from this one in
+# the last bit of an entry. That is a difference of -90 dB in a 16-bit wave
+# table, and DBOPL's own source calls the exact values an approximation choice.
+DBOPL_TABLES_INC = $(ROOT)/generated/dbopl_tables.inc
+
+$(DBOPL_TABLES_INC): $(ROOT)/tools/assets/dbopl_tables.c \
+                     $(ROOT)/tools/assets/gen-dbopl-tables.sh
+	$(ROOT)/tools/assets/gen-dbopl-tables.sh $(ROOT)/generated
+
+dbopl-tables: $(RESOURCES) $(DBOPL_TABLES_INC)
+	@$(call build_music,$(OUT)-dbopl-runtime,render_music.c)
+	@$(MAKE) -s --no-print-directory dbopl-tables-const
+	@$(OUT)-dbopl-runtime 10054 $(OUT)-dbopl-runtime.wav > /dev/null
+	@$(OUT)-dbopl-const   10054 $(OUT)-dbopl-const.wav   > /dev/null
+	@cmp $(OUT)-dbopl-runtime.wav $(OUT)-dbopl-const.wav \
+	  && echo "OK: the generated DBOPL tables render identically to the computed ones"
+
+dbopl-tables-const: MUSIC_OPT += -DPICOPOP_DBOPL_CONST_TABLES=1 -I $(ROOT)/generated
+dbopl-tables-const:
+	$(call build_music,$(OUT)-dbopl-const,render_music.c)
+
 $(REFERENCE) $(RESOURCES):
 	@$(ROOT)/tools/assets/build-resources.sh --reference $(DATA) $(GEN)
 
 clean:
 	rm -rf $(OUT) $(OUT)-asan $(OUT)-verify $(OUT)-music $(OUT)-budget \
+	       $(OUT)-dbopl-* \
 	       $(OUT)-opl3-* $(OUT)-wavdiff $(OUT)-*.objs
 
 # Check the on-the-fly digi resampler against the 16x expansion it replaced.
