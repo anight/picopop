@@ -571,11 +571,13 @@ sites in the whole tree, none of them hard.
 entirely (§9), taking 54 of the 64 allocation sites with it.
 
 One near-miss, worth recording so it is not re-investigated:
-`backend/pico/pio-i2s.c` includes `math.h` and computes its clock divider in
-`float` (`PioI2S_calculateClockDivision`, `PicoI2S_verifyPIOClockDivision`). It
-calls no libm function — the divides come from libgcc's soft-float — so it does
-not violate the rule, and it runs once at init so it costs nothing. Drop the
-vestigial include; leave the arithmetic alone.
+`picosdl/pio-i2s/src/pio-i2s.c` includes `math.h` and computes its clock divider in
+`float` (`PioI2S_calculateClockDivision`, `PicoI2S_verifyPIOClockDivision`). The
+only libm function it reaches is `modff`, which resolves to the SDK's
+RAM-resident copy rather than newlib's, and `roundf`/`fabsf` alongside it compile
+to FPU instructions with no call at all — checked in the linked image, where
+`modff` is the sole float symbol either function refers to. It runs once at init,
+so it does not violate the rule and costs nothing. Leave the arithmetic alone.
 
 Two things to check once these land, because they are the usual way libm creeps
 back in: newlib's `printf` family pulls float conversion in for `%f`/`%g` (the
