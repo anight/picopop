@@ -159,8 +159,16 @@ digi: $(RESOURCES)
 
 # Check that a mirrored sprite is an exact reversal - the path a right-facing
 # character is drawn through.
+#
+# The arena is enlarged for this build only, as in `verify`. The device never
+# allocates to mirror - PSDL_BlitMirrored reverses during the blit, which is why
+# it replaced SDLPoP's hflip() - but this test holds two full-size copies of a
+# sprite at once to compare them. Left at the device budget it silently reports
+# the largest sprites as "skipped" rather than failing, so the sprites most
+# worth checking are the ones that quietly stop being checked.
 mirror: $(RESOURCES)
-	$(CC) -std=c11 -O2 -g -Wall -Wextra $(PSDL_DEFS) -I $(PSDL)/include -I $(PSDL)/src \
+	$(CC) -std=c11 -O2 -g -Wall -Wextra $(PSDL_DEFS) -DPSDL_ARENA_BYTES=400000 \
+	  -I $(PSDL)/include -I $(PSDL)/src \
 	  -I $(POP) -I $(REFDIR) -o /tmp/picopop-mirror-check \
 	  mirror_check.c $(LIB) $(PSDL)/test/host_backend.c $(RESOURCES) -lm
 	/tmp/picopop-mirror-check
