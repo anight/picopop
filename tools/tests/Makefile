@@ -41,9 +41,9 @@ CFLAGS := -std=c11 -Wall -Wextra -g $(PSDL_DEFS) \
 LIB    := $(wildcard $(PSDL)/src/psdl_*.c)
 OUT    := /tmp/picopop-test
 
-.PHONY: all verify digi mirror music budget opl3 dbopl-tables joystick clean
+.PHONY: all verify digi mirror music budget opl3 dbopl-tables midi-fnum joystick clean
 
-all: $(RESOURCES) verify digi mirror dbopl-tables joystick
+all: $(RESOURCES) verify digi mirror dbopl-tables midi-fnum joystick
 
 # The generated game resources, and the reference the converter's output is
 # checked against. Both come from PR/src/bin - see convert.py.
@@ -164,10 +164,13 @@ joystick:
 # the last bit of an entry. That is a difference of -90 dB in a 16-bit wave
 # table, and DBOPL's own source calls the exact values an approximation choice.
 DBOPL_TABLES_INC = $(ROOT)/generated/dbopl_tables.inc
+MIDI_FNUM_INC    = $(ROOT)/generated/midi_fnum_table.inc
 
-$(DBOPL_TABLES_INC): $(ROOT)/tools/assets/dbopl_tables.c \
-                     $(ROOT)/tools/assets/gen-dbopl-tables.sh
-	$(ROOT)/tools/assets/gen-dbopl-tables.sh $(ROOT)/generated
+$(DBOPL_TABLES_INC): $(ROOT)/tools/assets/dbopl_tables.c $(ROOT)/tools/assets/gen-table.sh
+	$(ROOT)/tools/assets/gen-table.sh $< $(ROOT)/generated dbopl_tables.inc
+
+$(MIDI_FNUM_INC): $(ROOT)/tools/assets/midi_fnum_table.c $(ROOT)/tools/assets/gen-table.sh
+	$(ROOT)/tools/assets/gen-table.sh $< $(ROOT)/generated midi_fnum_table.inc
 
 dbopl-tables: $(RESOURCES) $(DBOPL_TABLES_INC)
 	@$(call build_music,$(OUT)-dbopl-runtime,render_music.c)
@@ -181,12 +184,31 @@ dbopl-tables-const: MUSIC_OPT += -DPICOPOP_DBOPL_CONST_TABLES=1 -I $(ROOT)/gener
 dbopl-tables-const:
 	$(call build_music,$(OUT)-dbopl-const,render_music.c)
 
+# Same idea for the MIDI note -> OPL {block, F-number} table: render a tune with
+# the generated table and with the powf()/log2f() it replaced, and require the
+# WAVs to be identical. A wrong entry here is a wrong note, so this is the test
+# that has to pass before trusting the table at all.
+midi-fnum: $(RESOURCES) $(MIDI_FNUM_INC)
+	$(CC) $(CFLAGS) -O2 -I $(ROOT)/generated -o $(OUT)-fnum-check \
+	  midi_fnum_check.c -lm
+	$(OUT)-fnum-check
+	@$(call build_music,$(OUT)-fnum-float,render_music.c)
+	@$(MAKE) -s --no-print-directory midi-fnum-table
+	@$(OUT)-fnum-float 10054 $(OUT)-fnum-float.wav > /dev/null
+	@$(OUT)-fnum-table 10054 $(OUT)-fnum-table.wav > /dev/null
+	@cmp $(OUT)-fnum-float.wav $(OUT)-fnum-table.wav \
+	  && echo "OK: the generated MIDI F-number table renders identically to powf/log2f"
+
+midi-fnum-table: MUSIC_OPT += -DPICOPOP_MIDI_FNUM_TABLE=1 -I $(ROOT)/generated
+midi-fnum-table:
+	$(call build_music,$(OUT)-fnum-table,render_music.c)
+
 $(REFERENCE) $(RESOURCES):
 	@$(ROOT)/tools/assets/build-resources.sh --reference $(DATA) $(GEN)
 
 clean:
 	rm -rf $(OUT) $(OUT)-asan $(OUT)-verify $(OUT)-music $(OUT)-budget \
-	       $(OUT)-dbopl-* $(OUT)-joystick \
+	       $(OUT)-dbopl-* $(OUT)-fnum-* $(OUT)-joystick \
 	       $(OUT)-opl3-* $(OUT)-wavdiff $(OUT)-*.objs
 
 # Check the on-the-fly digi resampler against the 16x expansion it replaced.

@@ -118,29 +118,40 @@ add_custom_command(
     VERBATIM
 )
 
-# DBOPL's two floating-point tables, computed here rather than on the board. It
-# is what keeps pow() and sin() out of the firmware, and it hands back 8,960
-# bytes of .bss. Unlike the resources this needs no DAT files - it is pure
-# arithmetic - but it is generated rather than committed so it cannot drift from
-# the expressions in dbopl.cpp without the build noticing.
-execute_process(
-    COMMAND ${PICOPOP_ROOT}/tools/assets/gen-dbopl-tables.sh ${PICOPOP_GENERATED}
-    RESULT_VARIABLE PICOPOP_DBOPL_RESULT
-    OUTPUT_VARIABLE PICOPOP_DBOPL_OUTPUT
-    ERROR_VARIABLE  PICOPOP_DBOPL_OUTPUT
-)
-if (NOT PICOPOP_DBOPL_RESULT EQUAL 0)
-    message(FATAL_ERROR "${PICOPOP_DBOPL_OUTPUT}")
-endif()
+# The tables that would otherwise be computed on the board with a maths library:
+# DBOPL's wave and multiply tables, and the MIDI note to OPL {block, F-number}
+# map. Between them they were every remaining caller of libm in the firmware.
+#
+# Unlike the resources these need no DAT files - they are pure arithmetic - but
+# they are generated rather than committed so they cannot drift from the
+# expressions they were copied out of without the build noticing.
+function(picopop_generate_table generator output comment)
+    execute_process(
+        COMMAND ${PICOPOP_ROOT}/tools/assets/gen-table.sh
+                ${PICOPOP_ROOT}/tools/assets/${generator}
+                ${PICOPOP_GENERATED} ${output}
+        RESULT_VARIABLE result
+        OUTPUT_VARIABLE output_text
+        ERROR_VARIABLE  output_text
+    )
+    if (NOT result EQUAL 0)
+        message(FATAL_ERROR "${output_text}")
+    endif()
 
-add_custom_command(
-    OUTPUT  ${PICOPOP_GENERATED}/dbopl_tables.inc
-    COMMAND ${PICOPOP_ROOT}/tools/assets/gen-dbopl-tables.sh ${PICOPOP_GENERATED}
-    DEPENDS ${PICOPOP_ROOT}/tools/assets/dbopl_tables.c
-            ${PICOPOP_ROOT}/tools/assets/gen-dbopl-tables.sh
-    COMMENT "Generating the DBOPL tables"
-    VERBATIM
-)
+    add_custom_command(
+        OUTPUT  ${PICOPOP_GENERATED}/${output}
+        COMMAND ${PICOPOP_ROOT}/tools/assets/gen-table.sh
+                ${PICOPOP_ROOT}/tools/assets/${generator}
+                ${PICOPOP_GENERATED} ${output}
+        DEPENDS ${PICOPOP_ROOT}/tools/assets/${generator}
+                ${PICOPOP_ROOT}/tools/assets/gen-table.sh
+        COMMENT "${comment}"
+        VERBATIM
+    )
+endfunction()
+
+picopop_generate_table(dbopl_tables.c    dbopl_tables.inc    "Generating the DBOPL tables")
+picopop_generate_table(midi_fnum_table.c midi_fnum_table.inc "Generating the MIDI F-number table")
 
 # Pico 2 W (RP2350). Override with -DPICO_BOARD=pico_w for the original board.
 # The system clock is 125 MHz, set by picosdl - below the RP2350's 150 MHz
@@ -239,6 +250,7 @@ add_executable(picopop
     ${SDLPOP_DIR}/replay.c     ${SDLPOP_DIR}/options.c  ${SDLPOP_DIR}/lighting.c
     ${SDLPOP_DIR}/screenshot.c ${SDLPOP_DIR}/menu.c     ${SDLPOP_DIR}/midi.c
     ${PICOPOP_RESOURCES}/resources.c
+    ${PICOPOP_GENERATED}/midi_fnum_table.inc
 )
 picopop_add_opl(picopop)
 
@@ -246,6 +258,10 @@ target_link_libraries(picopop PRIVATE picosdl pico_float)
 target_include_directories(picopop PRIVATE
     ${PICOSDL_DIR}/src ${SDLPOP_DIR} ${PICOPOP_RESOURCES} ${PICOPOP_GENERATED})
 target_compile_definitions(picopop PRIVATE PICOPOP=1)
+
+# Note-on takes a table lookup rather than powf() and log2f(); see
+# tools/assets/midi_fnum_table.c and the note at the use site in midi.c.
+target_compile_definitions(picopop PRIVATE PICOPOP_MIDI_FNUM_TABLE=1)
 
 # Print the mixer's load once a second on the console. It is the instrument
 # pointed at the one deadline that cannot be missed quietly, and what decides
@@ -275,4 +291,14 @@ target_compile_definitions(picopop PRIVATE PICO_HEAP_SIZE=32768)
 pico_enable_stdio_uart(picopop 1)
 pico_enable_stdio_usb(picopop 1)
 pico_add_extra_outputs(picopop)
+
+# The no-libm rule, enforced rather than asserted. Every transcendental this tree
+# used has been replaced by a build-time table or by integer arithmetic; this is
+# what stops one coming back unnoticed. See tools/check-no-libm.sh and TODO.md.
+add_custom_command(TARGET picopop POST_BUILD
+    COMMAND ${PICOPOP_ROOT}/tools/check-no-libm.sh
+            ${CMAKE_NM} $<TARGET_FILE:picopop>
+    COMMENT "Checking the image links no maths library"
+    VERBATIM
+)
 

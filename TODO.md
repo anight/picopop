@@ -9,60 +9,6 @@ source, because several items that looked outstanding turned out to be finished
 and one that looked finished turned out not to be. Where a claim has a number,
 the command that produced it is given.
 
-## The firmware still links a maths library
-
-One site reaches it, and it is the only one. From the image:
-
-```
-arm-none-eabi-objdump -d build/picopop.elf | awk \
-  '/^[0-9a-f]+ <.*>:/{fn=$2} /bl.*<__wrap_(pow|powf|sin|log2f|atan2)>/{print fn, $NF}' | sort -u
-```
-
-| caller | calls | when |
-|---|---|---|
-| `midi_callback` | `powf`, `log2f` | **per note-on**, turning a MIDI note into an OPL block/F-number |
-
-Not hard. The conversion is indexed by `note - 81 + midi_semitones_higher`, a
-small integer, so it is a const `{block, fnum}` lookup.
-
-`get_joystick_state`'s `atan2` was the second and is **done**. It computed an
-angle only to compare it against six fixed rays, and for that only the side of
-the ray matters — so the tests are now integer, in
-`SDLPoP/src/joystick_sectors.h`. Squaring turns each into `y*y` against `3*x*x`
-for the 60-degree rays, where `tan^2 60` is exactly 3, so three of the four come
-out exact rather than approximated. `make -C tools/tests joystick` checks them
-against the atan2 form over both ADC grids in full and over every integer
-straddling every ray.
-
-`DBOPL::InitTables` was the third and is **done**: `tools/assets/dbopl_tables.c`
-generates its `pow`/`sin` tables and `InitTables()` copies them in at boot.
-`make -C tools/tests dbopl-tables` renders the same tune with the generated
-tables and with the computed ones and requires the WAVs to match byte for byte,
-so the copied loops cannot drift from the originals unnoticed.
-
-That one did not go the way this entry predicted, which is worth keeping. It
-claimed the change would reclaim 8,960 bytes of `.bss`. It does not: leaving the
-tables in flash and reading them where they lie costs the mixer six points of
-its block budget — 24-25% average became 30-31% — because the RP2350's XIP cache
-is 8 KB and `WaveTable` alone is 8 KB, so a table indexed once per sample per
-operator evicts everything else on its way past. Copying them into RAM at boot
-gives the libm removal at no CPU cost and no RAM saving. **The `.bss` was the
-wrong reason to do it; the maths library was the right one.**
-
-**What the rule is, precisely.** The M33 has a single-precision FPU, so `float`
-add, subtract, multiply, divide and `sqrt` are single instructions and are fine.
-An FPU does not give you `sin`, `pow`, `log`, `exp` or `atan2` — those stay
-library calls of hundreds of cycles each. Two riders: `double` is soft-float on
-this FPU, so one stray `double` constant in a `float` expression costs what it
-always did; and if the RP2350's RISC-V cores are ever selected there is no FPU
-at all and the whole argument returns.
-
-Two ways it creeps back once removed: newlib's `printf` family pulls float
-conversion in for `%f`/`%g`, and `double`-typed constants in otherwise integer
-expressions emit soft-float helpers. **Done when** the image links with no libm
-object in the `.map` and the music still matches the reference render
-(`make -C tools/tests music`).
-
 ## The heap is down to two SDK calls, and nothing stops a third
 
 The goal is zero reachable `malloc`, and the game is there. Every allocation
@@ -81,7 +27,13 @@ arm-none-eabi-objdump -d build/picopop.elf | awk \
 
 So this is not a porting job any more — it is an enforcement job. Nothing in the
 build fails if a heap call comes back. Wrap the family with panicking wrappers
-and grep the `.map` in CI, with those two exempted by name.
+and check the image after every link, with those two exempted by name.
+
+`tools/check-no-libm.sh` is the shape to copy: it runs as a POST_BUILD step on
+the `picopop` target, greps the symbol table, and fails the build with the
+objdump one-liner that finds the caller. The heap version needs the same, plus
+the wrappers — symbol presence alone will not do here, because those two SDK
+calls make `malloc` legitimately present.
 
 **Why it is a rule and not a preference.** A `malloc` inside the I2S DMA
 interrupt on core 1 returned NULL and the firmware played bootrom contents as
