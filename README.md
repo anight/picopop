@@ -1,7 +1,8 @@
 # picopop
 
-Prince of Persia on a Raspberry Pi Pico 2 W, with an ST7789 panel, an I2S DAC,
-a Bluetooth keyboard and an analog stick.
+Prince of Persia on a Raspberry Pi Pico, with an ST7789 panel, an I2S DAC, a
+Bluetooth keyboard and an analog stick. All four Pico boards build - `pico`,
+`pico_w`, `pico2` and `pico2_w` - and the Pico 2 W is the one it runs on daily.
 
 It works: the game runs on the board with sound, a pad and a Bluetooth
 keyboard. [`TODO.md`](TODO.md) is what is left, and picosdl keeps
@@ -77,7 +78,7 @@ git submodule update --init --recursive
 The recursion matters: picosdl has two submodules of its own, the ST7789
 display driver and the I2S output driver.
 
-`build/picosdl-demo.uf2` is also produced. It brings up the panel, the DAC, the
+`build/picosdl-demo.elf` is also produced. It brings up the panel, the DAC, the
 radio and the stick without running the game, and stays useful as a bisection
 tool — it has a steady test tone, a memory report and a mixer-load figure.
 
@@ -85,8 +86,31 @@ tool — it has a steady test tone, a memory report and a mixer-load figure.
 
 | option | default | meaning |
 |---|---|---|
-| `PICO_BOARD` | `pico2_w` | `pico_w` still builds, but is short of RAM and flash |
+| `PICO_BOARD` | `pico2_w` | any of the four; see below |
 | `PICOPOP_OPL` | `dbopl` | `nuked` is the more faithful OPL3 and far more expensive |
+
+### Boards
+
+All four build, with no argument beyond the board name:
+
+| `PICO_BOARD` | part | flash | Bluetooth | `.text` | `.bss` |
+|---|---|---|---|---|---|
+| `pico` | RP2040 | 2 MB | no radio, defaults off | 1,602,308 | 183,132 |
+| `pico_w` | RP2040 | 2 MB | on | 2,043,772 | 205,036 |
+| `pico2` | RP2350 | 4 MB | no radio, defaults off | 1,593,816 | 182,496 |
+| **`pico2_w`** | RP2350 | 4 MB | on | 2,024,320 | 204,656 |
+
+`pico_w` is the one with no room to spare: 2,043,772 bytes of a 2 MB flash leaves
+about 52 KB, and it is Bluetooth that fills it - BTstack plus the CYW43 firmware
+blob. It did not fit at all until the game stopped keeping a second full-screen
+buffer, which was 62.5 KB of a 264 KB part. The RP2040 rows are also the ones
+with no FPU, which costs nothing here because the firmware links no maths library
+either way - see below.
+
+`pico2_w` is the default and the only one this is developed and run on. The other
+three are supported by construction rather than exercised: they build clean and
+the arithmetic works out, but the panel, the DAC and the radio have not been
+brought up together on one. picosdl says the same of its own three.
 
 ## Two rules the firmware holds
 
