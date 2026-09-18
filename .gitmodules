@@ -9,4 +9,4 @@
 [submodule "PR"]
 	path = PR
 	url = git@github.com:anight/PR.git
-	branch = add_plain_option
+	branch = master
