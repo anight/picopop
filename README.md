@@ -112,8 +112,8 @@ display driver and the I2S output driver.
 
 `build/picosdl-demo.elf` is also produced. It brings up the panel, the DAC, the
 radio and the stick without running the game, and stays useful as a bisection
-tool — it has a steady test tone, a memory report and a mixer-load figure. There
-is no `.uf2` for it, so it is the SWD route or nothing.
+tool — it has a steady test tone, a memory report and a mixer-load figure. It
+builds a `build/picosdl-demo.uf2` too, so either route above works for it.
 
 ### Options
 
