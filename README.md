@@ -63,13 +63,13 @@ cmake -S src -B build
 cmake --build build
 ```
 
-That produces `build/picopop.uf2`. To flash it, naming the part on the probe:
+That produces `build/picopop.uf2`. To flash it:
 
 ```bash
-picosdl/picodev.sh --rp2350 flash build/picopop.elf
+picosdl/picodev.sh flash build/picopop.elf
 ```
 
-`--rp2040` for a Pico or Pico W.
+It works out whether the probe is on an RP2040 or an RP2350 for itself.
 
 If you already cloned without `--recurse-submodules`:
 
