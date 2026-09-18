@@ -63,13 +63,43 @@ cmake -S src -B build
 cmake --build build
 ```
 
-That produces `build/picopop.uf2`. To flash it:
+That produces the same firmware as two images, and which one you want depends on
+whether you have a second Pico to debug with.
+
+### Over USB, with nothing but a cable
+
+`build/picopop.uf2`. Hold the BOOTSEL button down, plug the board into USB, then
+let go. It comes up as a USB mass storage device rather than running anything;
+copy the file onto it, and it reboots into the firmware as soon as the copy
+finishes.
+
+```bash
+cp build/picopop.uf2 /media/$USER/RPI-RP2/
+```
+
+`RPI-RP2` is what an RP2040 names the drive; an RP2350 uses a name of its own, so
+go by whatever actually mounted.
+
+No extra hardware, and this is the route if you want to run the thing rather than
+work on it.
+
+### Over SWD, with a second Pico as the debugger
+
+`build/picopop.elf`, through `picosdl/picodev.sh`. This one needs a probe on the
+board's SWD pins: a Raspberry Pi Debugprobe, or another Pico running the
+debugprobe firmware.
 
 ```bash
 picosdl/picodev.sh flash build/picopop.elf
 ```
 
 It works out whether the probe is on an RP2040 or an RP2350 for itself.
+
+Worth setting up if you are iterating. It programs without anyone reaching for a
+button, silences the audio before it starts — a halted board does not stop making
+noise, because the audio DMA chain re-triggers itself — and `flash-and-logs`
+attaches the console reader *before* programming, so the start-up banner is not
+already gone by the time you are watching. `picosdl/README.md` covers the rest.
 
 If you already cloned without `--recurse-submodules`:
 
@@ -82,7 +112,8 @@ display driver and the I2S output driver.
 
 `build/picosdl-demo.elf` is also produced. It brings up the panel, the DAC, the
 radio and the stick without running the game, and stays useful as a bisection
-tool — it has a steady test tone, a memory report and a mixer-load figure.
+tool — it has a steady test tone, a memory report and a mixer-load figure. There
+is no `.uf2` for it, so it is the SWD route or nothing.
 
 ### Options
 
