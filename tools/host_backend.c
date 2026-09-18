@@ -221,6 +221,25 @@ void psdl_backend_video_present(const Uint8 *pixels, int w, int h, int pitch)
 
 void psdl_backend_video_sync(void) { }
 
+/* The host present copies synchronously, so no buffer is ever still being read
+ * and the client's PSDL_PresentSync() has nothing to wait for. */
+int psdl_backend_video_buffer_busy(const void *pixels)
+{
+	(void)pixels;
+	return 0;
+}
+
+/*
+ * No cores to measure. Reporting -1 is how a backend says "no figure", which is
+ * what the status bands show as blank rather than as 0% - a lie that would look
+ * like a measurement.
+ */
+int psdl_backend_cpu_load(int core)
+{
+	(void)core;
+	return -1;
+}
+
 void psdl_backend_palette_set(int first, int ncolors, const SDL_Color *colors)
 {
 	for (int i = 0; i < ncolors; ++i) {

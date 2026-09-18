@@ -35,7 +35,14 @@ CXX     ?= c++
 # clash with the ones host_backend.c provides. The input PSDL_HAVE_* macros are
 # deliberately absent: the host has no joystick, pad or Bluetooth, and an undefined
 # macro is 0 in #if, which is the right answer.
+# PICOPOP_ONE_SCREEN_BUFFER must match the firmware. It did not before: the host
+# ran two-buffered while the board ran one, which is precisely why none of the
+# single-buffer bugs - missing wipes, a frozen cutscene, black gameplay - was
+# visible here. Now that the client owns its buffers there is no pool to serve the
+# two-buffer path a second 320x200 anyway, so the old setting fails outright
+# instead of quietly diverging.
 DEFS    := -D_GNU_SOURCE=1 -DPICOPOP=1 -DPICOPOP_USE_DBOPL=1 -DPSDL_HAVE_AUDIO=1 \
+           -DPICOPOP_ONE_SCREEN_BUFFER=1 \
            $(DEFS_EXTRA)
 
 INC     := -I $(PSDL)/include -I $(PSDL)/src -I $(POP) -I $(RES) -I .

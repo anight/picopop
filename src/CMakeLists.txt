@@ -222,14 +222,11 @@ set(PICOSDL_BUILD_DEMO ON CACHE BOOL "Build picosdl-demo for board bring-up")
 # because SDL_NumJoysticks() reports 0 and no key ever arrives, so nothing ever
 # interrupts the demo. That is the intended outcome, not a failure.
 #
-# One screen buffer, not two: the offscreen surface becomes a view of the one the
-# panel is sent, and the panel's own memory holds the frame being looked at. Worth
-# 62.5 KB - 52% of this firmware's RAM was the screen pool - and it costs the
-# overlap between drawing and pushing. Set before add_subdirectory so picosdl,
-# which owns the pool, is built with it; the game side is
-# PICOPOP_ONE_SCREEN_BUFFER below.
-set(PICOSDL_SCREEN_BUFFERS 1 CACHE STRING "" FORCE)
-
+# How many screen buffers exist is not picosdl's question any more: the client
+# owns every framebuffer, so it is settled entirely on this side by
+# PICOPOP_ONE_SCREEN_BUFFER below and needs no configuration here. There is one,
+# declared in seg009.c, and the offscreen surface is a view of it - worth 62.5 KB,
+# at the cost of the overlap between drawing and pushing.
 add_subdirectory(${PICOSDL_DIR} picosdl)
 
 # ------------------------------------------------------------ OPL emulator
