@@ -134,10 +134,8 @@ All four build, with no argument beyond the board name:
 
 `pico_w` is the one with no room to spare: 2,043,772 bytes of a 2 MB flash leaves
 about 52 KB, and it is Bluetooth that fills it - BTstack plus the CYW43 firmware
-blob. It did not fit at all until the game stopped keeping a second full-screen
-buffer, which was 62.5 KB of a 264 KB part. The RP2040 rows are also the ones
-with no FPU, which costs nothing here because the firmware links no maths library
-either way - see below.
+blob. The RP2040 rows are also the ones with no FPU, which costs nothing here
+because the firmware links no maths library either way - see below.
 
 `pico2_w` is the default and the only one this is developed and run on. The other
 three are supported by construction rather than exercised: they build clean and

@@ -48,11 +48,10 @@ of memory, and both core stacks should be set explicitly rather than defaulted.
 
 ## DBOPL or Nuked is worth reopening
 
-The firmware runs **DBOPL**, DOSBox's OPL emulator, and can no longer be built
-with anything else - the `PICOPOP_OPL` switch is gone. Nuked is still in SDLPoP
-and the tests still build it (`make -C tools/tests music OPL=nuked`), so the
-comparison below stays reproducible on the host. Measured on the title theme
-with callgrind:
+The firmware runs **DBOPL**, DOSBox's OPL emulator, and has no switch for
+anything else. Nuked is in SDLPoP and the tests build it
+(`make -C tools/tests music OPL=nuked`), so the comparison below is reproducible
+on the host. Measured on the title theme with callgrind:
 
 | | instr / output sample | chip state | host time |
 |---|---|---|---|

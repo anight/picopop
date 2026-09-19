@@ -222,11 +222,11 @@ set(PICOSDL_BUILD_DEMO ON CACHE BOOL "Build picosdl-demo for board bring-up")
 # because SDL_NumJoysticks() reports 0 and no key ever arrives, so nothing ever
 # interrupts the demo. That is the intended outcome, not a failure.
 #
-# How many screen buffers exist is not picosdl's question any more: the client
-# owns every framebuffer, so it is settled entirely on this side by
-# PICOPOP_ONE_SCREEN_BUFFER below and needs no configuration here. There is one,
-# declared in seg009.c, and the offscreen surface is a view of it - worth 62.5 KB,
-# at the cost of the overlap between drawing and pushing.
+# How many screen buffers exist is not picosdl's question: the client owns every
+# framebuffer, so it is settled on this side by PICOPOP_ONE_SCREEN_BUFFER below
+# and needs no configuration here. There is one, declared in seg009.c, and the
+# offscreen surface is a view of it - worth 62.5 KB, at the cost of the overlap
+# between drawing and pushing.
 add_subdirectory(${PICOSDL_DIR} picosdl)
 
 # ------------------------------------------------------------ OPL emulator
