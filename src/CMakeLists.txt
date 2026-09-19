@@ -231,40 +231,31 @@ add_subdirectory(${PICOSDL_DIR} picosdl)
 
 # ------------------------------------------------------------ OPL emulator
 #
-#   dbopl  DOSBox's, the default. Measured on the title theme at 938
-#          instructions per output sample against Nuked's 5583 - about 6x
-#          cheaper - and 5176 bytes of chip state against Nuked's 20776. It is
-#          the less exact chip model: level-matched to 0.06 dB with a 0.9995
-#          loudness-envelope correlation, but ~1.3 dB brighter above 6 kHz.
-#   nuked  Nuked OPL3 1.7.4, what SDLPoP ships, with picopop's silent-slot and
-#          unfolded-table optimisations. More faithful, and much more expensive.
+# DOSBox's dbopl, and no choice about it.
 #
-# See TODO.md.
-set(PICOPOP_OPL dbopl CACHE STRING "OPL emulator: dbopl or nuked")
-set_property(CACHE PICOPOP_OPL PROPERTY STRINGS dbopl nuked)
-message(STATUS "OPL emulator: ${PICOPOP_OPL}")
-
+# Measured on the title theme at 938 instructions per output sample against
+# Nuked's 5583 - about 6x cheaper - and 5176 bytes of chip state against Nuked's
+# 20776. It is the less exact chip model: level-matched to 0.06 dB with a 0.9995
+# loudness-envelope correlation, but ~1.3 dB brighter above 6 kHz. On this
+# hardware that trade is not close enough to be worth offering, and a build
+# option nobody should pick is one more thing to keep working.
+#
+# Nuked OPL3 is still in SDLPoP and the test suite can still build it - see
+# `make -C tools/tests music OPL=nuked` - so the comparison above stays
+# reproducible. It just cannot be compiled into the firmware.
 function(picopop_add_opl target)
-    if (PICOPOP_OPL STREQUAL "dbopl")
-        target_sources(${target} PRIVATE
-            ${SDLPOP_DIR}/dbopl.cpp ${SDLPOP_DIR}/dbopl_adapter.cpp
-            ${PICOPOP_GENERATED}/dbopl_tables.inc)
-        target_compile_definitions(${target} PRIVATE PICOPOP_DBOPL_CONST_TABLES=1)
-        # opl3.h switches on this: midi.c keeps including it, but gets a token
-        # opl3_chip instead of Nuked's 19 KB struct, and opl3.c compiles to
-        # nothing.
-        target_compile_definitions(${target} PRIVATE PICOPOP_USE_DBOPL=1)
-        # Vendored C++ with no runtime needs: no exceptions, RTTI or libstdc++.
-        set_source_files_properties(
-            ${SDLPOP_DIR}/dbopl.cpp ${SDLPOP_DIR}/dbopl_adapter.cpp
-            PROPERTIES COMPILE_OPTIONS
-            "-fno-exceptions;-fno-rtti;-fno-threadsafe-statics")
-    elseif (PICOPOP_OPL STREQUAL "nuked")
-        target_sources(${target} PRIVATE ${SDLPOP_DIR}/opl3.c)
-        target_compile_definitions(${target} PRIVATE PICOPOP_USE_DBOPL=0)
-    else()
-        message(FATAL_ERROR "PICOPOP_OPL must be dbopl or nuked, not '${PICOPOP_OPL}'")
-    endif()
+    target_sources(${target} PRIVATE
+        ${SDLPOP_DIR}/dbopl.cpp ${SDLPOP_DIR}/dbopl_adapter.cpp
+        ${PICOPOP_GENERATED}/dbopl_tables.inc)
+    target_compile_definitions(${target} PRIVATE PICOPOP_DBOPL_CONST_TABLES=1)
+    # opl3.h switches on this: midi.c keeps including it, but gets a token
+    # opl3_chip instead of Nuked's 19 KB struct, and opl3.c compiles to nothing.
+    target_compile_definitions(${target} PRIVATE PICOPOP_USE_DBOPL=1)
+    # Vendored C++ with no runtime needs: no exceptions, RTTI or libstdc++.
+    set_source_files_properties(
+        ${SDLPOP_DIR}/dbopl.cpp ${SDLPOP_DIR}/dbopl_adapter.cpp
+        PROPERTIES COMPILE_OPTIONS
+        "-fno-exceptions;-fno-rtti;-fno-threadsafe-statics")
 endfunction()
 
 # ----------------------------------------------------------------- the game

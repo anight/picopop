@@ -120,7 +120,6 @@ builds a `build/picosdl-demo.uf2` too, so either route above works for it.
 | option | default | meaning |
 |---|---|---|
 | `PICO_BOARD` | `pico2_w` | any of the four; see below |
-| `PICOPOP_OPL` | `dbopl` | `nuked` is the more faithful OPL3 and far more expensive |
 
 ### Boards
 
@@ -192,7 +191,7 @@ recording because one incompatible component would have been a real problem:
 |---|---|
 | SDLPoP | GPL-3.0-**or-later** — sets the floor |
 | DBOPL, from DOSBox-X | GPL-2.0-**or-later** |
-| Nuked OPL3 (`PICOPOP_OPL=nuked`) | GPL-2.0-**or-later** |
+| Nuked OPL3 (in `SDLPoP/`, built only by the tests) | GPL-2.0-**or-later** |
 | Princed Resources (`PR/`) | GPL-2.0-**or-later** |
 | picosdl | BSD-2-Clause |
 | pio-st7789, pio-i2s, Pico SDK | BSD-2 / BSD-3-Clause |

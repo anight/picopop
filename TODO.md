@@ -48,9 +48,11 @@ of memory, and both core stacks should be set explicitly rather than defaulted.
 
 ## DBOPL or Nuked is worth reopening
 
-The firmware runs **DBOPL**, DOSBox's OPL emulator. `PICOPOP_OPL=nuked` still
-builds and switches to Nuked, which is the more exact model. Measured on the
-title theme with callgrind:
+The firmware runs **DBOPL**, DOSBox's OPL emulator, and can no longer be built
+with anything else - the `PICOPOP_OPL` switch is gone. Nuked is still in SDLPoP
+and the tests still build it (`make -C tools/tests music OPL=nuked`), so the
+comparison below stays reproducible on the host. Measured on the title theme
+with callgrind:
 
 | | instr / output sample | chip state | host time |
 |---|---|---|---|
@@ -70,8 +72,9 @@ with no correction (RMS 2409 against 2392), spectrum within 0.1 dB below 3 kHz
 and +1.3 dB above 6 kHz, and a 0.9995 loudness-envelope correlation. Same notes,
 same times, same dynamics, slightly brighter top end.
 
-It is one CMake variable either way. What it needs is a listen on the board and
-a mixer-load reading with `PICOPOP_OPL=nuked`, not more analysis.
+Reopening it means putting the switch back - the firmware side was a dozen lines
+of CMake - and then what it needs is a listen on the board and a mixer-load
+reading with Nuked in, not more analysis.
 
 The two Nuked optimisations are kept and still build: **silent-slot skipping**
 (`OPL3_SKIP_SILENT_SLOTS`, 38% cheaper, not bit-exact but 73 dB down, enforced by

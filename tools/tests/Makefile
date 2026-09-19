@@ -50,8 +50,9 @@ all: $(RESOURCES) verify digi mirror dbopl-tables midi-fnum joystick midi-tables
 RESOURCES := $(REFDIR)/resources.c
 REFERENCE := $(REFDIR)/reference.bin
 
-# Which OPL emulator the music targets use, matching PICOPOP_OPL in
-# src/CMakeLists.txt. dbopl is what the firmware ships.
+# Which OPL emulator the music targets use. dbopl is what the firmware ships and
+# now the only thing it can ship; nuked builds here and nowhere else, which is
+# what keeps the comparison in TODO.md reproducible.
 #   make music OPL=nuked
 # C and C++ have to be compiled separately - resources.c uses C compound
 # literals, which are not addressable rvalues in C++ - then linked with the C++
