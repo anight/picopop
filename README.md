@@ -13,7 +13,8 @@ Pico boards build; the Pico 2 W is the one it is developed and run on.
 ## Layout
 
 ```
-src/        the firmware build - CMakeLists.txt, main.c, and the hardware demo
+src/        main.c, the firmware's entry point; the build is CMakeLists.txt
+            at the top level
 picosdl/    submodule: a subset of SDL2 for the RP2040 and RP2350. Knows nothing
             about this or any other game, and is meant to be reused
 SDLPoP/     submodule: the game, on the picopop branch of the fork
@@ -60,7 +61,7 @@ Nothing in `generated/` is committed and `SDLPoP/data/*.DAT` is ignored.
 git clone --recurse-submodules git@github.com:anight/picopop.git
 cd picopop
 # ...put the DAT files in SDLPoP/data first...
-cmake -S src -B build
+cmake -S . -B build
 cmake --build build
 ```
 

@@ -43,7 +43,7 @@ OUT    := /tmp/picopop-test
 
 .PHONY: all verify digi mirror music budget opl3 dbopl-tables midi-fnum joystick midi-pool midi-tables datfile clean
 
-all: $(RESOURCES) verify digi mirror dbopl-tables midi-fnum joystick midi-tables
+all: $(RESOURCES) verify digi mirror dbopl-tables midi-fnum joystick midi-tables datfile
 
 # The generated game resources, and the reference the converter's output is
 # checked against. Both are produced by ../assets - see convert.py.
@@ -93,17 +93,21 @@ endif
 
 
 
-# Check tools/assets/datfile.py against Princed Resources: every resource as
-# bytes, and every image as pixels. Not part of `all`, because it needs a PR
-# checkout and an extraction, and the build has neither - see the header of
-# datfile_check.py for how to produce them. It is the only independent check on
-# the decoder, so run it after changing datfile.py.
+# Check tools/assets/datfile.py against the reader it was ported from: every
+# resource as bytes, and every image as pixels.
 #
-#   make datfile PR_EXTRACT=/path/to/extraction
-PR_EXTRACT ?= $(GEN)
-
+# dat_decode_ref.c calls the real functions in SDLPoP/src/seg009.c, so the two
+# sides share no code. Linking one file out of a game works because seg009.c is
+# compiled with -ffunction-sections and linked with --gc-sections, and the
+# reference tool refers to nothing but the decoder - so the rest of the game,
+# and everything it would drag in, is discarded at link time.
 datfile:
-	python3 datfile_check.py $(DATA) $(PR_EXTRACT)
+	$(CC) -std=c11 -O1 -ffunction-sections -fdata-sections $(PSDL_DEFS) \
+	    -DPICOPOP=1 -DPICOPOP_USE_DBOPL=1 -DPICOPOP_ONE_SCREEN_BUFFER=1 \
+	    -D_GNU_SOURCE=1 -I $(PSDL)/include -I $(PSDL)/src -I $(POP) \
+	    -I $(REFDIR) -I $(GLUE) -Wl,--gc-sections \
+	    -o $(OUT)-datref dat_decode_ref.c $(POP)/seg009.c
+	python3 datfile_check.py $(OUT)-datref $(DATA)
 
 # Check the build-time sprite conversion end to end: every sprite blitted from
 # its const flash surface, mapped back through the global palette, and compared

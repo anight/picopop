@@ -3,14 +3,14 @@
 #
 # This is the top-level build. Configure it directly:
 #
-#     cmake -S src -B build
+#     cmake -S . -B build
 #     cmake --build build
 #
 # and it produces build/picopop.uf2, which picodev.sh will program.
 #
 # The layout it assumes:
 #
-#   src/        this file, main.c, and the hardware demo
+#   src/        main.c, the entry point
 #   picosdl/    the SDL2 subset, a submodule and an independent library
 #   SDLPoP/     the game, a submodule
 #   tools/      the desktop build, the tests and the asset pipeline
@@ -61,7 +61,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 message(STATUS "picopop: build type ${CMAKE_BUILD_TYPE}")
 
-set(PICOPOP_ROOT ${CMAKE_CURRENT_LIST_DIR}/..)
+set(PICOPOP_ROOT ${CMAKE_CURRENT_LIST_DIR})
 set(PICOSDL_DIR  ${PICOPOP_ROOT}/picosdl)
 set(SDLPOP_DIR   ${PICOPOP_ROOT}/SDLPoP/src)
 
@@ -208,7 +208,7 @@ set(PICOSDL_BUILD_DEMO ON CACHE BOOL "Build picosdl-demo for board bring-up")
 # none is required, so a board with only some of them - or none - is a supported
 # configuration rather than something to work around:
 #
-#   cmake -S src -B build -DPICOSDL_INPUT_BT_KEYBOARD=OFF
+#   cmake -S . -B build -DPICOSDL_INPUT_BT_KEYBOARD=OFF
 #
 # PICOSDL_AUDIO is on the same footing, for a board with no MAX98357A and no
 # speaker: SDL_OpenAudio() then fails, this game sets digi_unavailable and plays
@@ -262,11 +262,11 @@ endfunction()
 #
 # stb_vorbis.c is deliberately absent (TODO.md: 54 of the 64
 # allocation sites, and the Ogg path is compiled out anyway), and so is
-# SDLPoP's main.c - the entry point here is main.c beside this file, which
+# SDLPoP's main.c - the entry point here is src/main.c, which
 # brings the hardware up and then calls pop_main().
 #
 add_executable(picopop
-    main.c
+    src/main.c
     ${SDLPOP_DIR}/data.c       ${SDLPOP_DIR}/seg000.c   ${SDLPOP_DIR}/seg001.c
     ${SDLPOP_DIR}/seg002.c     ${SDLPOP_DIR}/seg003.c   ${SDLPOP_DIR}/seg004.c
     ${SDLPOP_DIR}/seg005.c     ${SDLPOP_DIR}/seg006.c   ${SDLPOP_DIR}/seg007.c
@@ -303,7 +303,7 @@ target_compile_definitions(picopop PRIVATE PICOPOP_ONE_SCREEN_BUFFER=1)
 target_compile_definitions(picopop PRIVATE PICOPOP_REPORT_AUDIO_LOAD=1)
 
 # Our own code only; SDLPoP's is not warning-clean under -Wextra.
-set_source_files_properties(main.c PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")
+set_source_files_properties(src/main.c PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")
 
 # Nothing in the game reaches the heap any more - every allocation site is a
 # static pool now, verified by disassembly. What is left are three SDK callers

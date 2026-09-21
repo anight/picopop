@@ -23,7 +23,7 @@ arm-none-eabi-objdump -d build/picopop.elf | awk \
   cyw43_btbus_init
 ```
 
-`PICO_HEAP_SIZE=32768` (`src/CMakeLists.txt`) is reserved for those two.
+`PICO_HEAP_SIZE=32768` (`CMakeLists.txt`) is reserved for those two.
 
 So this is not a porting job any more — it is an enforcement job. Nothing in the
 build fails if a heap call comes back. Wrap the family with panicking wrappers
