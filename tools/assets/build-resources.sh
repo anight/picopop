@@ -33,10 +33,10 @@ WORK_DIR="${2:-$ROOT/generated}"
 # ---------------------------------------------------------------- the DATs
 
 # What convert.py needs. Eight of these ship with SDLPoP itself; the rest come
-# from an original copy of the game and are what you have to provide.
-NEEDED="DIGISND1.DAT DIGISND2.DAT DIGISND3.DAT FAT.DAT GUARD1.DAT GUARD2.DAT
-        GUARD.DAT KID.DAT LEVELS.DAT MIDISND1.DAT MIDISND2.DAT PRINCE.DAT
-        PV.DAT SHADOW.DAT SKEL.DAT TITLE.DAT VDUNGEON.DAT VIZIER.DAT VPALACE.DAT"
+# from an original copy of the game and are what you have to provide. The list
+# comes from convert.py, which is the thing that reads them, so there is one
+# copy of it rather than two that drift.
+NEEDED=$(python3 "$HERE/convert.py" --list-dats)
 
 missing=""
 for f in $NEEDED; do
@@ -63,22 +63,12 @@ EOF
 	exit 1
 fi
 
-# ------------------------------------------------------------------ the tool
-
-PR_SRC="$ROOT/PR/src"
-PR_TOOL="$PR_SRC/bin/pr"
-
-if [ ! -x "$PR_TOOL" ]; then
-	echo "picopop: building the PR extractor"
-	make -s -C "$PR_SRC" >/dev/null
-fi
-[ -x "$PR_TOOL" ] || { echo "picopop: $PR_TOOL was not built" >&2; exit 1; }
-
 # ------------------------------------------------------------- up to date?
 
 mkdir -p "$WORK_DIR"
 STAMP="$WORK_DIR/.resources.stamp"
-FINGERPRINT=$( (cd "$DATA_DIR" && md5sum $NEEDED 2>/dev/null; md5sum "$HERE/convert.py") | md5sum )
+FINGERPRINT=$( (cd "$DATA_DIR" && md5sum $NEEDED 2>/dev/null; \
+                md5sum "$HERE/convert.py" "$HERE/datfile.py") | md5sum )
 
 if [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$FINGERPRINT" ] \
    && [ -f "$WORK_DIR/resources/resources.c" ]; then
@@ -90,15 +80,12 @@ fi
 
 # ------------------------------------------------------------------- build
 
-echo "picopop: extracting $DATA_DIR -> $WORK_DIR"
-PR_TOOL="$PR_TOOL" "$HERE/extract.sh" "$DATA_DIR" "$WORK_DIR"
-
-echo "picopop: converting"
-( cd "$WORK_DIR" && python3 "$HERE/convert.py" )
+echo "picopop: converting $DATA_DIR -> $WORK_DIR"
+( cd "$WORK_DIR" && python3 "$HERE/convert.py" "$DATA_DIR" )
 
 if [ "$WANT_REFERENCE" = 1 ]; then
 	echo "picopop: building the sprite reference"
-	( cd "$WORK_DIR" && python3 "$HERE/dump_reference.py" )
+	( cd "$WORK_DIR" && python3 "$HERE/dump_reference.py" "$DATA_DIR" )
 fi
 
 echo "$FINGERPRINT" > "$STAMP"

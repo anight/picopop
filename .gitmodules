@@ -6,7 +6,3 @@
 	path = SDLPoP
 	url = git@github.com:anight/SDLPoP.git
 	branch = picopop
-[submodule "PR"]
-	path = PR
-	url = git@github.com:anight/PR.git
-	branch = master

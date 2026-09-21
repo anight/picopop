@@ -112,24 +112,25 @@ nothing. It reads `SDLPoP/data` and writes `generated/`; both are overridable:
 tools/assets/build-resources.sh /path/to/dats /path/to/output
 ```
 
-Underneath it runs `extract.sh` (the DATs through PR's `pr` tool, building it
-first if needed) and then `convert.py`. Neither writes into the source tree.
+Underneath it runs `convert.py`, which reads the DAT files directly through
+`datfile.py` and writes nothing into the source tree.
 
-Nothing it produces is committed: the DAT files are the original game's and
-the generated C is derived from them. `generated/` is about 20 MB.
+Nothing it produces is committed: the DAT files are the original game's and the
+generated C is derived from them.
 
-Each DAT is exported twice, not three times. `--plain` gives images decoded to
-BMP, which is the only source of pixels; `--plain --raw` gives the bytes
-exactly as the DAT holds them, which is what the firmware embeds and parses.
-Neither is derivable from the other without reimplementing PR's codec. PR can
-also export under human-readable names, but nothing in the pipeline reads that
-form.
+`datfile.py` is the container and the image codec, ported from the reader in
+`SDLPoP/src/seg009.c` — a six-byte header and an index table, then five
+compression methods and a bit-depth expansion. Both forms a resource can take
+come from it: the bytes exactly as the DAT holds them, which is what the
+firmware embeds and parses, and the decoded pixels, which are what the sprites
+become.
 
-> These scripts used to live in `PR/src/bin/` alongside the data, where
-> `PR/.gitignore`'s `bin/` rule silently swept them up: four untracked files,
-> including the converter, sitting in a directory nothing was backing up. They
-> are here now so they are tracked — and they no longer write into `PR/`,
-> which is a pristine submodule again.
+It also decides what a resource *is*, which the format does not record.
+`looks_like_shpl()` takes a sprite-set palette to be a hundred bytes whose VGA
+levels are all within six bits; `looks_like_image()` takes an image to be a
+header naming a defined compression method and a plausible size, which decodes
+without running off either end. Both were checked against PR, an independent
+reader, and agreed on all 819 images and 20 sprite sets in the game's data.
 
 `preview.py` renders the converted sprites as a contact sheet, which is the
 quickest way to see that a palette row is wrong.

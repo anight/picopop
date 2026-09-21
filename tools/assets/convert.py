@@ -36,14 +36,29 @@ Output lands in resources/ as resources.{h,c,inc}, to be copied into
 SDLPoP/src/.
 """
 
-from glob import glob
 import collections
 import os
-import struct
-import subprocess
 import sys
 
+from datfile import Dat, decode_image, looks_like_image, looks_like_shpl
+from datfile import read_shpl as parse_shpl
+
 OUT_DIR = "resources"
+
+# The DAT files this reads, and the only ones. A copy of the game ships others -
+# the CGA and EGA art sets, and the PC-speaker sound sets - which this port has
+# no use for: it draws from the VGA sets and cannot play speaker sounds at all.
+# Reading everything in the directory would pull those in, give their sprite
+# sets no palette row, and emit their images as raw bytes.
+#
+# build-resources.sh gets this list from `convert.py --list-dats` rather than
+# keeping its own, so the two cannot drift.
+DAT_FILES = [
+    "DIGISND1.DAT", "DIGISND2.DAT", "DIGISND3.DAT", "FAT.DAT",
+    "GUARD1.DAT", "GUARD2.DAT", "GUARD.DAT", "KID.DAT", "LEVELS.DAT",
+    "MIDISND1.DAT", "MIDISND2.DAT", "PRINCE.DAT", "PV.DAT", "SHADOW.DAT",
+    "SKEL.DAT", "TITLE.DAT", "VDUNGEON.DAT", "VIZIER.DAT", "VPALACE.DAT",
+]
 
 # ---------------------------------------------------------------------------
 # Which row of 16 each sprite set's palette occupies.
@@ -120,11 +135,7 @@ IMAGES_FROM = {
 #
 # It overlays them onto the environment chtab at level load, colouring them
 # with resource 200's palette - row_bits 0x20 is row 5, the same row the
-# environment set uses. So they take that set's row, and check_palette() below
-# confirms each one really does carry that palette rather than another.
-#
-# These were previously left as raw bytes, which meant the overlay silently did
-# nothing and levels drew with the base tile set only.
+# environment set uses. So they take that set's row.
 OPTGRAF_BASE = 1200
 OPTGRAF_PALETTE_SET = 200
 
@@ -133,105 +144,26 @@ OPTGRAF_PALETTE_SET = 200
 # reading what extract.sh produced
 # ---------------------------------------------------------------------------
 
-def res_id(path):
-    return int(os.path.basename(path)[3:-4])
-
-
-def dat_of(path):
-    return os.path.dirname(path)
-
-
 def c_name(datfile, rid):
     return f"{datfile.lower().replace('.', '_')}_res{rid:05d}"
 
 
-def read_shpl(datfile, rid):
+def load_dats(dat_dir):
+    """The DAT files this build needs, by filename, in a stable order."""
+    missing = [n for n in DAT_FILES
+               if not os.path.exists(os.path.join(dat_dir, n))]
+    if missing:
+        print(f"convert: missing from {dat_dir}: {' '.join(missing)}",
+              file=sys.stderr)
+        sys.exit(1)
+    return collections.OrderedDict((n, Dat(os.path.join(dat_dir, n)))
+                                   for n in sorted(DAT_FILES))
+
+
+def read_shpl(dats, datfile, rid):
     """A sprite-set header: n_images, then a 16-colour palette in 6-bit RGB."""
-    raw = open(f"{datfile}.raw/res{rid:05d}.bin", "rb").read()
-    assert len(raw) == 100, f"{datfile} res{rid}: shpl is {len(raw)} bytes, expected 100"
-    n_images = raw[0]
-    # skip row_bits (2) and n_colors (1); the game overrides row_bits anyway
-    palette = [(raw[4 + i * 3], raw[5 + i * 3], raw[6 + i * 3]) for i in range(16)]
+    n_images, palette = parse_shpl(dats[datfile].raw(rid))
     return n_images, palette
-
-
-def read_bmp(path):
-    """Unpack a 1bpp or 4bpp BMP into (width, height, [row][col] palette indices).
-
-    BMP rows are stored bottom-up and padded to a 4-byte boundary; both matter,
-    and getting either wrong produces an image that looks almost right.
-    """
-    d = open(path, "rb").read()
-    assert d[:2] == b"BM", f"{path}: not a BMP"
-    bits_offset = struct.unpack("<I", d[10:14])[0]
-    hdr_size = struct.unpack("<I", d[14:18])[0]
-    width, height = struct.unpack("<ii", d[18:26])
-    bpp = struct.unpack("<H", d[28:30])[0]
-    assert bpp in (1, 4), f"{path}: {bpp}bpp not handled"
-
-    pal_off = 14 + hdr_size
-    n_pal = 1 << bpp
-    palette = [(d[pal_off + i * 4 + 2], d[pal_off + i * 4 + 1], d[pal_off + i * 4])
-               for i in range(n_pal)]
-
-    bottom_up = height > 0
-    height = abs(height)
-    row_bytes = ((width * bpp + 31) // 32) * 4
-
-    rows = []
-    for y in range(height):
-        base = bits_offset + y * row_bytes
-        row = []
-        for x in range(width):
-            if bpp == 4:
-                b = d[base + x // 2]
-                row.append((b >> 4) if x % 2 == 0 else (b & 0x0F))
-            else:
-                b = d[base + x // 8]
-                row.append((b >> (7 - x % 8)) & 1)
-        rows.append(row)
-    if bottom_up:
-        rows.reverse()
-    return width, height, rows, palette
-
-
-# ---------------------------------------------------------------------------
-# emitting C
-# ---------------------------------------------------------------------------
-
-def check_palette(path, owner, s, bmp_pal, stats):
-    """Confirm a BMP's indices really do index its sprite set's palette.
-
-    That assumption is what the whole row-offset scheme rests on: if pr had
-    renumbered anything, baking row*16 into the pixels would silently produce
-    the wrong colours.
-
-    Three cases:
-
-      * 4bpp images from the set's own DAT carry the set's palette verbatim, so
-        compare it outright;
-      * images that live in a different DAT than their palette (GUARD.DAT's,
-        whose palettes are in GUARD1/GUARD2) got pr's default sixteen, because
-        pr had no shpl to colour them with - nothing to compare against;
-      * depth-1 images are inconsistent. Their pixel values are 0/1 into the
-        set's palette like anything else, but pr writes either the set's
-        colours 0 and 1 (13 of them) or plain black and white (23). That is a
-        presentation choice in the exporter and says nothing about the indices.
-        Accept either and reject anything else, so a real renumbering is still
-        caught.
-    """
-    want = [(r * 4, g * 4, b * 4) for r, g, b in s["palette"]]
-
-    if s["img_dat"] != owner[0]:
-        stats["foreign"] += 1
-    elif len(bmp_pal) == 16:
-        assert bmp_pal == want, (
-            f"{path}: BMP palette does not match {owner[0]} res{owner[1]}'s "
-            f"shpl palette - the row offset would be wrong")
-    else:
-        assert bmp_pal in (want[:len(bmp_pal)], [(0, 0, 0), (255, 255, 255)]), (
-            f"{path}: unexpected {len(bmp_pal)}-colour palette {bmp_pal}")
-        stats["mono"] += 1
 
 
 def emit_bytes(fh, name, data):
@@ -257,6 +189,15 @@ def emit_surface(fh, name, width, height, colorkey):
 # ---------------------------------------------------------------------------
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--list-dats":
+        print(" ".join(DAT_FILES))
+        return
+
+    # The DAT directory, which the pipeline passes; the output still lands in
+    # the working directory, which is what build-resources.sh sets up.
+    dat_dir = sys.argv[1] if len(sys.argv) > 1 else "."
+    dats = load_dats(dat_dir)
+
     os.makedirs(OUT_DIR, exist_ok=True)
 
     # -- work out which images belong to which sprite set ------------------
@@ -270,12 +211,9 @@ def main():
     image_owner = {}     # (datfile, rid) -> (datfile, shpl_id)
     stats_optgraf = collections.Counter()
 
-    for path in sorted(glob("*.DAT/*.bin")):
-        if open(path, "rb").read(4) != b"JASC":
-            continue
-        datfile, rid = dat_of(path), res_id(path)
-        raw = f"{datfile}.raw/res{rid:05d}.bin"
-        if not os.path.exists(raw) or os.path.getsize(raw) != 100:
+    for datfile, dat in dats.items():
+      for rid in dat.ids:
+        if not looks_like_shpl(dat.raw(rid)):
             continue
 
         key = (datfile, rid)
@@ -284,7 +222,7 @@ def main():
                   f"palette row; its images stay raw", file=sys.stderr)
             continue
 
-        n_images, palette = read_shpl(datfile, rid)
+        n_images, palette = read_shpl(dats, datfile, rid)
         row, what, cite = PALETTE_ROWS[key]
         img_dat = IMAGES_FROM.get(key, datfile)
         sets[key] = dict(row=row, what=what, cite=cite, palette=palette,
@@ -312,11 +250,11 @@ def main():
     # reaching them through the set, and the set's list is indexed
     # shpl_id+1+i, which never reaches 1200.
 
-    for path in sorted(glob("*.DAT/*.bin")):
-        datfile, rid = dat_of(path), res_id(path)
+    for datfile, dat in dats.items():
+      for rid in dat.ids:
         if rid <= OPTGRAF_BASE:
             continue
-        if open(path, "rb").read(2) != b"BM":
+        if not looks_like_image(dat.raw(rid)):
             continue
         env = (datfile, OPTGRAF_PALETTE_SET)
         if env not in sets:
@@ -341,22 +279,21 @@ def main():
 
     surface_of = {}   # (datfile, rid) -> C name of the generated surface
 
-    for path in sorted(glob("*.DAT/*.bin")):
-        datfile, rid = dat_of(path), res_id(path)
+    for datfile, dat in dats.items():
+      for rid in dat.ids:
         name = c_name(datfile, rid)
         entry = dict(rid=rid, name=name, kind="raw", surface=None)
+        raw = dat.raw(rid)
 
         owner = image_owner.get((datfile, rid))
-        is_bmp = open(path, "rb").read(2) == b"BM"
 
-        if owner is not None and is_bmp:
+        if owner is not None and looks_like_image(raw):
             s = sets[owner]
             base = s["row"] * 16
-            width, height, rows, bmp_pal = read_bmp(path)
-            check_palette(path, owner, s, bmp_pal, stats)
+            width, height, indices = decode_image(raw)
             checked += 1
 
-            pixels = bytes(base + v for row in rows for v in row)
+            pixels = bytes(base + v for v in indices)
             emit_bytes(inc, name, pixels)
             emit_surface(inc, name, width, height, base)
             inc.write("\n")
@@ -367,7 +304,6 @@ def main():
             stats["image_bytes"] += len(pixels)
         else:
             # Everything else goes in exactly as the DAT holds it.
-            raw = open(f"{datfile}.raw/res{rid:05d}.bin", "rb").read()
             emit_bytes(inc, name, raw)
             inc.write("\n")
             stats["raw"] += 1
@@ -392,9 +328,9 @@ def main():
     # and no one could see why. Fail the build instead.
 
     unconverted = []
-    for path in sorted(glob("*.DAT/*.bin")):
-        datfile, rid = dat_of(path), res_id(path)
-        if open(path, "rb").read(2) != b"BM":
+    for datfile, dat in dats.items():
+      for rid in dat.ids:
+        if not looks_like_image(dat.raw(rid)):
             continue
         if (datfile, rid) not in surface_of:
             unconverted.append(f"{datfile} res{rid}")
@@ -538,8 +474,8 @@ const struct sprite_set_s *resources_find_sprite_set(const char *datfile, int sh
         # its seven 16-colour variants per room, writing it over row 8 with
         # set_chtab_palette (seg003.c:257). Emit them so that is possible.
         guard_pals = []
-        if os.path.exists("PRINCE.DAT.raw/res00010.bin"):
-            raw = open("PRINCE.DAT.raw/res00010.bin", "rb").read()
+        if "PRINCE.DAT" in dats and 10 in dats["PRINCE.DAT"]:
+            raw = dats["PRINCE.DAT"].raw(10)
             for p in range(len(raw) // 48):
                 guard_pals.append([(raw[p * 48 + i * 3] * 4,
                                     raw[p * 48 + i * 3 + 1] * 4,
@@ -613,7 +549,7 @@ const struct sprite_set_s *resources_find_sprite_set(const char *datfile, int sh
     print(f"raw resources   : {stats['raw']} "
           f"({stats['raw_bytes'] / 1024:.1f} KB)")
     print(f"palette tables  : {palette_bytes + len(sets) * 48} bytes")
-    print(f"palette checks  : {checked} images verified against their shpl palette")
+    print(f"images decoded  : {checked}")
     if stats_optgraf:
         detail = ", ".join(f"{d} {n}" for d, n in sorted(stats_optgraf.items()))
         print(f"optional graphics: {sum(stats_optgraf.values())} images ({detail})")

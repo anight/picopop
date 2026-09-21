@@ -13,7 +13,7 @@
  * palette, and compare against a reference built from the original BMPs by a
  * completely different route (dump_reference.py).
  *
- *   python3 PR/src/bin/dump_reference.py
+ *   make -C tools/tests resources
  *   make -C picosdl/test verify
  */
 #include <stdio.h>
@@ -23,7 +23,11 @@
 #include "psdl_internal.h"
 #include "resources.h"
 
-#define REFERENCE_PATH "../../PR/src/bin/resources/reference.bin"
+/* The Makefile passes this: it is the only thing that knows where the asset
+ * pipeline put the reference. */
+#ifndef REFERENCE_PATH
+#define REFERENCE_PATH "reference.bin"
+#endif
 
 static int checked, mismatched, missing;
 
@@ -151,7 +155,7 @@ int main(void)
 
 	FILE *fp = fopen(REFERENCE_PATH, "rb");
 	if (fp == NULL) {
-		printf("cannot open %s - run PR/src/bin/dump_reference.py first\n",
+		printf("cannot open %s - run the asset pipeline first\n",
 		       REFERENCE_PATH);
 		return 1;
 	}

@@ -28,22 +28,25 @@ The verifier looks them up by resource id instead.
 import os
 import struct
 import sys
-from glob import glob
 
 from convert import (IMAGES_FROM, OPTGRAF_BASE, OPTGRAF_PALETTE_SET,
-                     PALETTE_ROWS, read_bmp, read_shpl)
+                     PALETTE_ROWS, load_dats, read_shpl)
+from datfile import decode_image, looks_like_image
 
 OUT = "resources/reference.bin"
 
 
 def main():
+    dat_dir = sys.argv[1] if len(sys.argv) > 1 else "."
+    dats = load_dats(dat_dir)
+
     os.makedirs("resources", exist_ok=True)
     records = []
 
     for (datfile, shpl_id) in sorted(PALETTE_ROWS):
-        if not os.path.isdir(datfile):
+        if datfile not in dats:
             continue
-        n_images, palette = read_shpl(datfile, shpl_id)
+        n_images, palette = read_shpl(dats, datfile, shpl_id)
         rgb = [(r * 4, g * 4, b * 4) for r, g, b in palette]
 
         # The guard sets' shpl palettes are entirely black - the guards get
@@ -52,23 +55,23 @@ def main():
         # black rectangle and the comparison would prove nothing about the
         # indices. verify_resources.c substitutes the same one.
         if all(c == (0, 0, 0) for c in rgb):
-            raw = open("PRINCE.DAT.raw/res00010.bin", "rb").read()
+            raw = dats["PRINCE.DAT"].raw(10)
             rgb = [(raw[i * 3] * 4, raw[i * 3 + 1] * 4, raw[i * 3 + 2] * 4)
                    for i in range(16)]
 
         img_dat = IMAGES_FROM.get((datfile, shpl_id), datfile)
 
         for i in range(1, n_images + 1):
-            path = f"{img_dat}/res{shpl_id + i:05d}.bin"
-            if not os.path.exists(path):
+            rid = shpl_id + i
+            if img_dat not in dats or rid not in dats[img_dat]:
                 continue
-            if open(path, "rb").read(2) != b"BM":
+            raw = dats[img_dat].raw(rid)
+            if not looks_like_image(raw):
                 continue
-            w, h, rows, _ = read_bmp(path)
+            w, h, indices = decode_image(raw)
             pixels = bytearray()
-            for row in rows:
-                for v in row:
-                    pixels += bytes(rgb[v])
+            for v in indices:
+                pixels += bytes(rgb[v])
             records.append((shpl_id, i - 1, w, h, datfile, bytes(pixels)))
 
     # -- the optional graphics --------------------------------------------
@@ -79,23 +82,22 @@ def main():
 
     optgraf = 0
     for datfile in sorted({d for d, _ in PALETTE_ROWS}):
-        if not os.path.isdir(datfile):
+        if datfile not in dats:
             continue
         if (datfile, OPTGRAF_PALETTE_SET) not in PALETTE_ROWS:
             continue
-        _, palette = read_shpl(datfile, OPTGRAF_PALETTE_SET)
+        _, palette = read_shpl(dats, datfile, OPTGRAF_PALETTE_SET)
         rgb = [(r * 4, g * 4, b * 4) for r, g, b in palette]
-        for path in sorted(glob(f"{datfile}/res*.bin")):
-            rid = int(os.path.basename(path)[3:8])
+        for rid in dats[datfile].ids:
             if rid <= OPTGRAF_BASE:
                 continue
-            if open(path, "rb").read(2) != b"BM":
+            raw = dats[datfile].raw(rid)
+            if not looks_like_image(raw):
                 continue
-            w, h, rows, _ = read_bmp(path)
+            w, h, indices = decode_image(raw)
             pixels = bytearray()
-            for row in rows:
-                for v in row:
-                    pixels += bytes(rgb[v])
+            for v in indices:
+                pixels += bytes(rgb[v])
             records.append((rid, 0xFFFFFFFF, w, h, datfile, bytes(pixels)))
             optgraf += 1
 

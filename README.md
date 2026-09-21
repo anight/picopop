@@ -17,7 +17,6 @@ src/        the firmware build - CMakeLists.txt, main.c, and the hardware demo
 picosdl/    submodule: a subset of SDL2 for the RP2040 and RP2350. Knows nothing
             about this or any other game, and is meant to be reused
 SDLPoP/     submodule: the game, on the picopop branch of the fork
-PR/         submodule: Princed Resources, the tool that reads the DAT files
 tools/      the desktop build, the tests and the asset pipeline - see its README
 generated/  the converted resources, built from your DAT files (never committed)
 ```
@@ -251,7 +250,6 @@ a single incompatible component would have been a genuine problem:
 | SDLPoP | GPL-3.0-**or-later** — sets the floor |
 | DBOPL, from DOSBox-X | GPL-2.0-**or-later** |
 | Nuked OPL3 (in `SDLPoP/`, built only by the tests) | GPL-2.0-**or-later** |
-| Princed Resources (`PR/`) | GPL-2.0-**or-later** |
 | picosdl | BSD-2-Clause |
 | pio-st7789, pio-i2s, Pico SDK | BSD-2 / BSD-3-Clause |
 | the status-band font | public domain (X11 misc-fixed) |

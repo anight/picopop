@@ -41,12 +41,12 @@ CFLAGS := -std=c11 -Wall -Wextra -g $(PSDL_DEFS) \
 LIB    := $(wildcard $(PSDL)/src/psdl_*.c)
 OUT    := /tmp/picopop-test
 
-.PHONY: all verify digi mirror music budget opl3 dbopl-tables midi-fnum joystick midi-pool midi-tables clean
+.PHONY: all verify digi mirror music budget opl3 dbopl-tables midi-fnum joystick midi-pool midi-tables datfile clean
 
 all: $(RESOURCES) verify digi mirror dbopl-tables midi-fnum joystick midi-tables
 
 # The generated game resources, and the reference the converter's output is
-# checked against. Both come from PR/src/bin - see convert.py.
+# checked against. Both are produced by ../assets - see convert.py.
 RESOURCES := $(REFDIR)/resources.c
 REFERENCE := $(REFDIR)/reference.bin
 
@@ -93,6 +93,18 @@ endif
 
 
 
+# Check tools/assets/datfile.py against Princed Resources: every resource as
+# bytes, and every image as pixels. Not part of `all`, because it needs a PR
+# checkout and an extraction, and the build has neither - see the header of
+# datfile_check.py for how to produce them. It is the only independent check on
+# the decoder, so run it after changing datfile.py.
+#
+#   make datfile PR_EXTRACT=/path/to/extraction
+PR_EXTRACT ?= $(GEN)
+
+datfile:
+	python3 datfile_check.py $(DATA) $(PR_EXTRACT)
+
 # Check the build-time sprite conversion end to end: every sprite blitted from
 # its const flash surface, mapped back through the global palette, and compared
 # against the original BMPs. The scratch surface is bigger than any sprite, so
@@ -100,6 +112,7 @@ endif
 # 512x512 image.
 verify: $(REFERENCE)
 	$(CC) $(CFLAGS) -DPSDL_ARENA_BYTES=400000 -I $(POP) \
+	    -DREFERENCE_PATH='"$(REFERENCE)"' \
 	    -o $(OUT)-verify verify_resources.c $(PSDL)/test/host_backend.c $(LIB) $(RESOURCES)
 	$(OUT)-verify
 
