@@ -58,7 +58,7 @@ Nothing in `generated/` is committed and `SDLPoP/data/*.DAT` is ignored.
 ## Building
 
 ```bash
-git clone --recurse-submodules git@github.com:anight/picopop.git
+git clone --recurse-submodules https://github.com/anight/picopop.git
 cd picopop
 # ...put the DAT files in SDLPoP/data first...
 cmake -S . -B build
